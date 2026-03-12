@@ -1,0 +1,351 @@
+package indexer
+
+import (
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	_ "modernc.org/sqlite" // register "sqlite" driver
+)
+
+const schema = `
+PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS files (
+    path       TEXT PRIMARY KEY,
+    language   TEXT NOT NULL,
+    sha256     TEXT NOT NULL,
+    mtime      TEXT NOT NULL DEFAULT '',
+    size       INTEGER NOT NULL DEFAULT 0,
+    indexed_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS symbols (
+    id         INTEGER PRIMARY KEY,
+    file_path  TEXT    NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+    name       TEXT    NOT NULL,
+    type       TEXT    NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line   INTEGER NOT NULL,
+    parent     TEXT    NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_symbols_file   ON symbols(file_path);
+CREATE INDEX IF NOT EXISTS idx_symbols_name   ON symbols(name);
+CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
+    name, type, parent, file_path,
+    content='symbols',
+    content_rowid='id'
+);
+
+CREATE TRIGGER IF NOT EXISTS symbols_fts_ai AFTER INSERT ON symbols BEGIN
+    INSERT INTO symbols_fts(rowid, name, type, parent, file_path)
+    VALUES (new.id, new.name, new.type, new.parent, new.file_path);
+END;
+
+CREATE TRIGGER IF NOT EXISTS symbols_fts_ad AFTER DELETE ON symbols BEGIN
+    INSERT INTO symbols_fts(symbols_fts, rowid, name, type, parent, file_path)
+    VALUES ('delete', old.id, old.name, old.type, old.parent, old.file_path);
+END;
+
+CREATE TRIGGER IF NOT EXISTS symbols_fts_au AFTER UPDATE ON symbols BEGIN
+    INSERT INTO symbols_fts(symbols_fts, rowid, name, type, parent, file_path)
+    VALUES ('delete', old.id, old.name, old.type, old.parent, old.file_path);
+    INSERT INTO symbols_fts(rowid, name, type, parent, file_path)
+    VALUES (new.id, new.name, new.type, new.parent, new.file_path);
+END;
+
+CREATE TABLE IF NOT EXISTS refs (
+    id          INTEGER PRIMARY KEY,
+    caller_file TEXT    NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+    caller_name TEXT    NOT NULL DEFAULT '',
+    callee_name TEXT    NOT NULL,
+    line        INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_refs_caller_file ON refs(caller_file);
+CREATE INDEX IF NOT EXISTS idx_refs_caller_name ON refs(caller_name);
+CREATE INDEX IF NOT EXISTS idx_refs_callee_name ON refs(callee_name);
+`
+
+// OpenIndex opens (or creates) the SQLite index for root, applies the schema,
+// and writes repo metadata. The caller is responsible for closing the DB.
+func OpenIndex(root string) (*sql.DB, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve root path: %w", err)
+	}
+
+	dbPath, err := dbPath(absRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return nil, fmt.Errorf("cannot create index directory: %w", err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open index db: %w", err)
+	}
+
+	// Single writer — serialise all writes through one connection.
+	db.SetMaxOpenConns(1)
+
+	if _, err := db.Exec(schema); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("cannot apply schema: %w", err)
+	}
+
+	// Persist repo metadata.
+	if err := setMeta(db, absRoot); err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	return db, nil
+}
+
+// GetFileMeta returns the stored hash, mtime, and size for rel, or a zero-value
+// FileMeta if the file is not in the index. Safe to call from multiple goroutines
+// concurrently.
+func GetFileMeta(db *sql.DB, rel string) (FileMeta, error) {
+	var meta FileMeta
+	err := db.QueryRow(
+		`SELECT sha256, mtime, size FROM files WHERE path = ?`, rel,
+	).Scan(&meta.Hash, &meta.Mtime, &meta.Size)
+	if err == sql.ErrNoRows {
+		return FileMeta{}, nil
+	}
+	if err != nil {
+		return FileMeta{}, fmt.Errorf("GetFileMeta %s: %w", rel, err)
+	}
+	return meta, nil
+}
+
+// GetFileHash returns the stored sha256 for rel, or "" if the file is not
+// in the index. Safe to call from multiple goroutines concurrently.
+func GetFileHash(db *sql.DB, rel string) (string, error) {
+	meta, err := GetFileMeta(db, rel)
+	return meta.Hash, err
+}
+
+// WriteFile upserts a file entry and its symbols inside a single transaction.
+// Existing symbols for the file are removed via FK cascade before re-inserting.
+func WriteFile(db *sql.DB, rel string, entry FileEntry) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("WriteFile begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Enable FK enforcement inside this connection/transaction.
+	if _, err := tx.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		return fmt.Errorf("WriteFile pragma: %w", err)
+	}
+
+	// Delete the file row — FK cascade removes its symbols automatically.
+	if _, err := tx.Exec(`DELETE FROM files WHERE path = ?`, rel); err != nil {
+		return fmt.Errorf("WriteFile delete file: %w", err)
+	}
+
+	// Insert the new file row.
+	if _, err := tx.Exec(
+		`INSERT INTO files (path, language, sha256, mtime, size, indexed_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		rel, entry.Language, entry.SHA256, entry.Mtime, entry.Size, entry.IndexedAt.UTC().Format(time.RFC3339),
+	); err != nil {
+		return fmt.Errorf("WriteFile insert file: %w", err)
+	}
+
+	// Batch-insert symbols.
+	stmt, err := tx.Prepare(
+		`INSERT INTO symbols (file_path, name, type, start_line, end_line, parent)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+	)
+	if err != nil {
+		return fmt.Errorf("WriteFile prepare symbols: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, s := range entry.Symbols {
+		if _, err := stmt.Exec(rel, s.Name, string(s.Type), s.StartLine, s.EndLine, s.Parent); err != nil {
+			return fmt.Errorf("WriteFile insert symbol %q: %w", s.Name, err)
+		}
+	}
+
+	// Batch-insert call-site refs (if any).
+	if len(entry.Calls) > 0 {
+		refStmt, err := tx.Prepare(
+			`INSERT INTO refs (caller_file, caller_name, callee_name, line)
+			 VALUES (?, ?, ?, ?)`,
+		)
+		if err != nil {
+			return fmt.Errorf("WriteFile prepare refs: %w", err)
+		}
+		defer refStmt.Close()
+
+		for _, c := range entry.Calls {
+			callerName := resolveCallerName(entry.Symbols, c.Line)
+			if _, err := refStmt.Exec(rel, callerName, c.CalleeName, c.Line); err != nil {
+				return fmt.Errorf("WriteFile insert ref callee=%q line=%d: %w", c.CalleeName, c.Line, err)
+			}
+		}
+	}
+
+	return tx.Commit()
+}
+
+// PruneFiles removes index entries for files that no longer exist on disk.
+// deleted is the set of relative paths to remove.
+func PruneFiles(db *sql.DB, deleted []string) error {
+	if len(deleted) == 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("PruneFiles begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		return fmt.Errorf("PruneFiles pragma: %w", err)
+	}
+
+	stmt, err := tx.Prepare(`DELETE FROM files WHERE path = ?`)
+	if err != nil {
+		return fmt.Errorf("PruneFiles prepare: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, rel := range deleted {
+		if _, err := stmt.Exec(rel); err != nil {
+			return fmt.Errorf("PruneFiles delete %s: %w", rel, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// IndexedPaths returns all file paths currently stored in the index.
+// Used by Run to detect deleted files.
+func IndexedPaths(db *sql.DB) (map[string]bool, error) {
+	rows, err := db.Query(`SELECT path FROM files`)
+	if err != nil {
+		return nil, fmt.Errorf("IndexedPaths query: %w", err)
+	}
+	defer rows.Close()
+
+	paths := make(map[string]bool)
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, fmt.Errorf("IndexedPaths scan: %w", err)
+		}
+		paths[p] = true
+	}
+	return paths, rows.Err()
+}
+
+// --- helpers ---
+
+// dbPath returns the absolute path to the SQLite file for the given
+// (already-absolute) root directory.
+func dbPath(absRoot string) (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, RepoID(absRoot), "index.db"), nil
+}
+
+// configDir returns the base directory for all mimir indexes.
+// Respects $XDG_CONFIG_HOME; falls back to $HOME/.config.
+func configDir() (string, error) {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("cannot determine home directory: %w", err)
+		}
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "mimir", "indexes"), nil
+}
+
+// RepoID derives a stable, human-readable identifier for a repository root.
+// Format: <basename>-<8-hex-chars> where the suffix is the first 8 characters
+// of the SHA-256 of the absolute root path.
+func RepoID(root string) string {
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		abs = root
+	}
+	sum := sha256.Sum256([]byte(abs))
+	return filepath.Base(abs) + "-" + hex.EncodeToString(sum[:])[:8]
+}
+
+// setMeta writes root, repo_id, and git_head into the meta table.
+func setMeta(db *sql.DB, absRoot string) error {
+	pairs := []struct{ k, v string }{
+		{"version", fmt.Sprintf("%d", indexVersion)},
+		{"root", absRoot},
+		{"repo_id", RepoID(absRoot)},
+		{"git_head", gitHead(absRoot)},
+	}
+	for _, p := range pairs {
+		if _, err := db.Exec(
+			`INSERT INTO meta (key, value) VALUES (?, ?)
+			 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+			p.k, p.v,
+		); err != nil {
+			return fmt.Errorf("setMeta %s: %w", p.k, err)
+		}
+	}
+	return nil
+}
+
+// resolveCallerName returns the name of the innermost symbol in syms whose
+// [StartLine, EndLine] range contains line. If no symbol contains the line,
+// an empty string is returned (the call is at package/file scope).
+func resolveCallerName(syms []SymbolInfo, line int) string {
+	best := ""
+	bestSpan := -1
+	for _, s := range syms {
+		if line >= s.StartLine && line <= s.EndLine {
+			span := s.EndLine - s.StartLine
+			if bestSpan < 0 || span < bestSpan {
+				best = s.Name
+				bestSpan = span
+			}
+		}
+	}
+	return best
+}
+
+// gitHead returns the current git HEAD commit hash for the repository rooted
+// at dir. Returns an empty string if dir is not inside a git repository or if
+// git is not available — callers should treat "" as "unknown".
+func gitHead(dir string) string {
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
