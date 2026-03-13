@@ -13,6 +13,29 @@ const CallQueries = `
     property: (property_identifier) @callee)) @call
 `
 
+// JSXCallQueries extends CallQueries with JSX element patterns for JSX files.
+// Matches everything CallQueries matches, plus:
+//   - JSX opening elements: <MyComponent prop={x}>
+//   - JSX self-closing elements: <MyComponent />
+//
+// Note: lowercase-initial JSX identifiers (native HTML tags such as <div>,
+// <span>, <input>) are filtered out at runtime in runCallQuery so that only
+// user-defined component names (PascalCase / uppercase-initial) are recorded
+// as call references.
+//
+// These patterns are intentionally separated from CallQueries because
+// jsx_opening_element and jsx_self_closing_element are only valid node types
+// in the JSX-enabled JavaScript grammar — compiling them against the plain
+// JavaScript grammar may produce a query compilation error depending on the
+// grammar version.
+const JSXCallQueries = CallQueries + `
+(jsx_opening_element
+  name: (identifier) @callee) @call
+
+(jsx_self_closing_element
+  name: (identifier) @callee) @call
+`
+
 // RefQueries captures identifiers used as values (not called directly) in:
 //   - object/array literal properties: { handler: myFn }
 //   - variable declarators: const f = myFn  /  let f = myFn  /  var f = myFn

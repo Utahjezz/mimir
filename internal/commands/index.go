@@ -2,6 +2,7 @@ package commands
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -9,6 +10,7 @@ import (
 )
 
 var jsonOutput bool
+var indexRebuild bool
 
 var indexCmd = &cobra.Command{
 	Use:   "index <path>",
@@ -21,8 +23,21 @@ var indexCmd = &cobra.Command{
 func runIndex(cmd *cobra.Command, args []string) error {
 	root := args[0]
 
+	if indexRebuild {
+		if err := indexer.DropIndex(root); err != nil {
+			return fmt.Errorf("cannot drop index: %w", err)
+		}
+	}
+
 	db, err := indexer.OpenIndex(root)
 	if err != nil {
+		var mismatch *indexer.SchemaMismatchError
+		if errors.As(err, &mismatch) {
+			return fmt.Errorf(
+				"index schema has changed (v%d → v%d): run `mimir index --rebuild %s` to recreate it",
+				mismatch.Stored, mismatch.Current, root,
+			)
+		}
 		return fmt.Errorf("cannot open index: %w", err)
 	}
 	defer db.Close()

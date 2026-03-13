@@ -119,6 +119,44 @@ func FindDeadSymbols(db *sql.DB, q DeadCodeQuery) ([]DeadSymbol, error) {
 	return results, nil
 }
 
+// CountDeadCandidates returns the total number of symbols that would be
+// evaluated by FindDeadSymbols for the same query (i.e. the candidate pool
+// before the "no callers" filter is applied). Used to generate the summary
+// line shown when no dead symbols are found.
+func CountDeadCandidates(db *sql.DB, q DeadCodeQuery) (int, error) {
+	var conditions []string
+	var args []any
+
+	if q.Type != "" {
+		conditions = append(conditions, "s.type = ?")
+		args = append(args, q.Type)
+	} else {
+		conditions = append(conditions, "s.type IN ('function', 'method')")
+	}
+
+	if q.FilePath != "" {
+		conditions = append(conditions, "s.file_path LIKE ?")
+		args = append(args, "%"+q.FilePath+"%")
+	}
+
+	conditions = append(conditions,
+		"s.name NOT IN ('main', 'init')",
+		"s.name NOT LIKE 'Test%'",
+		"s.name NOT LIKE 'Benchmark%'",
+		"s.name NOT LIKE 'Example%'",
+		"s.name NOT LIKE 'Fuzz%'",
+	)
+
+	where := "WHERE " + strings.Join(conditions, " AND ")
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM symbols s %s`, where)
+
+	var n int
+	if err := db.QueryRow(query, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("CountDeadCandidates: %w", err)
+	}
+	return n, nil
+}
+
 // isUnexported reports whether name starts with a lowercase letter — the Go
 // convention for unexported identifiers.
 func isUnexported(name string) bool {

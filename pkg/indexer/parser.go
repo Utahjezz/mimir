@@ -2,9 +2,26 @@ package indexer
 
 import (
 	"fmt"
+	"unicode"
+	"unicode/utf8"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
+
+// isUserDefinedComponent reports whether name looks like a user-defined JSX
+// component rather than a native HTML tag. The JSX convention is that
+// user-defined components start with an uppercase letter (e.g. MyComponent,
+// Button) while native HTML tags are all lowercase (div, span, input).
+//
+// This filter is applied to @callee captures from JSX query patterns so that
+// <div> and <span> do not produce spurious call references.
+func isUserDefinedComponent(name string) bool {
+	if name == "" {
+		return false
+	}
+	r, _ := utf8.DecodeRuneInString(name)
+	return unicode.IsUpper(r)
+}
 
 // parentTypes are the symbol types that can own child symbols.
 var parentTypes = map[SymbolType]bool{
@@ -118,10 +135,11 @@ func runQuery(entry langEntry, code []byte) ([]SymbolInfo, error) {
 		}
 
 		symbols = append(symbols, SymbolInfo{
-			Name:      name,
-			Type:      symType,
-			StartLine: int((*node).StartPosition().Row) + 1,
-			EndLine:   int((*node).EndPosition().Row) + 1,
+			Name:        name,
+			Type:        symType,
+			StartLine:   int((*node).StartPosition().Row) + 1,
+			EndLine:     int((*node).EndPosition().Row) + 1,
+			BodySnippet: bodySnippetFromNode(node, code),
 		})
 	}
 
@@ -169,6 +187,11 @@ func ExtractCalls(lang string, code []byte) ([]CallSite, error) {
 // runCallQuery executes a pre-compiled call-site query and returns a CallSite
 // per @callee capture. The query is shared across goroutines; each call uses
 // its own cursor so concurrent use is safe.
+//
+// JSX element captures (<MyComponent />, <MyComponent>) use the same @callee
+// capture name as function calls. To avoid recording native HTML tags (div,
+// span, input, …) as refs, any callee whose parent node is a JSX element and
+// whose name starts with a lowercase letter is silently skipped.
 func runCallQuery(query *tree_sitter.Query, tree *tree_sitter.Tree, code []byte) ([]CallSite, error) {
 	cursor := tree_sitter.NewQueryCursor()
 	defer cursor.Close()
@@ -183,8 +206,15 @@ func runCallQuery(query *tree_sitter.Query, tree *tree_sitter.Tree, code []byte)
 		}
 		for _, capture := range match.Captures {
 			if query.CaptureNames()[capture.Index] == "callee" {
+				name := capture.Node.Utf8Text(code)
+				// Filter out native HTML tags emitted by JSX element patterns.
+				parentKind := capture.Node.Parent().Kind()
+				if (parentKind == "jsx_opening_element" || parentKind == "jsx_self_closing_element") &&
+					!isUserDefinedComponent(name) {
+					continue
+				}
 				calls = append(calls, CallSite{
-					CalleeName: capture.Node.Utf8Text(code),
+					CalleeName: name,
 					Line:       int(capture.Node.StartPosition().Row) + 1,
 				})
 			}

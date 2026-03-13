@@ -12,14 +12,16 @@ import (
 var (
 	treeJSON  bool
 	treeFiles bool
+	treeDepth int
 )
 
 var treeCmd = &cobra.Command{
 	Use:   "tree <root>",
 	Short: "Show the indexed file tree for a repository",
-	Long:  `Print a directory tree derived from the index, with file and symbol counts per directory.`,
-	Args:  cobra.ExactArgs(1),
-	RunE:  runTree,
+	Long: `Print a directory tree derived from the index, with file and symbol counts per directory.
+Use --depth N to limit output to the top N levels (useful for large repositories).`,
+	Args: cobra.ExactArgs(1),
+	RunE: runTree,
 }
 
 func runTree(cmd *cobra.Command, args []string) error {
@@ -43,8 +45,14 @@ func runTree(cmd *cobra.Command, args []string) error {
 	w := cmd.OutOrStdout()
 	for _, node := range indexer.FlattenTree(tree) {
 		indent := ""
+		depth := 0
 		if node.Path != "." {
-			depth := len(splitPath(node.Path))
+			parts := splitPath(node.Path)
+			depth = len(parts)
+			// Skip nodes deeper than --depth (0 means unlimited).
+			if treeDepth > 0 && depth > treeDepth {
+				continue
+			}
 			for i := 0; i < depth-1; i++ {
 				indent += "  "
 			}

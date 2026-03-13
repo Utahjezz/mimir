@@ -58,7 +58,7 @@ func SearchRefs(db *sql.DB, q RefQuery) ([]RefRow, error) {
 	}
 	defer rows.Close()
 
-	var results []RefRow
+	results := make([]RefRow, 0)
 	for rows.Next() {
 		var r RefRow
 		if err := rows.Scan(&r.ID, &r.CallerFile, &r.CallerName, &r.CalleeName, &r.Line); err != nil {

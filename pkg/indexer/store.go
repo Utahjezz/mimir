@@ -4,15 +4,36 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // register "sqlite" driver
 )
+
+// SchemaMismatchError is returned by OpenIndex when the on-disk index was built
+// with a different schema version than the current binary expects. The caller
+// should instruct the user to run `mimir index --rebuild <path>`.
+type SchemaMismatchError struct {
+	Stored  int // version recorded in the existing index
+	Current int // version expected by this binary
+}
+
+func (e *SchemaMismatchError) Error() string {
+	return fmt.Sprintf("index schema mismatch: stored v%d, current v%d", e.Stored, e.Current)
+}
+
+// IsSchemaMismatch reports whether err (or any error in its chain) is a
+// *SchemaMismatchError.
+func IsSchemaMismatch(err error) bool {
+	var target *SchemaMismatchError
+	return errors.As(err, &target)
+}
 
 const schema = `
 PRAGMA foreign_keys = ON;
@@ -33,13 +54,15 @@ CREATE TABLE IF NOT EXISTS files (
 );
 
 CREATE TABLE IF NOT EXISTS symbols (
-    id         INTEGER PRIMARY KEY,
-    file_path  TEXT    NOT NULL REFERENCES files(path) ON DELETE CASCADE,
-    name       TEXT    NOT NULL,
-    type       TEXT    NOT NULL,
-    start_line INTEGER NOT NULL,
-    end_line   INTEGER NOT NULL,
-    parent     TEXT    NOT NULL DEFAULT ''
+    id            INTEGER PRIMARY KEY,
+    file_path     TEXT    NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+    name          TEXT    NOT NULL,
+    type          TEXT    NOT NULL,
+    start_line    INTEGER NOT NULL,
+    end_line      INTEGER NOT NULL,
+    parent        TEXT    NOT NULL DEFAULT '',
+    name_tokens   TEXT    NOT NULL DEFAULT '',
+    body_snippet  TEXT    NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_symbols_file   ON symbols(file_path);
@@ -47,26 +70,26 @@ CREATE INDEX IF NOT EXISTS idx_symbols_name   ON symbols(name);
 CREATE INDEX IF NOT EXISTS idx_symbols_parent ON symbols(parent);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
-    name, type, parent, file_path,
+    name, type, parent, file_path, name_tokens, body_snippet,
     content='symbols',
     content_rowid='id'
 );
 
 CREATE TRIGGER IF NOT EXISTS symbols_fts_ai AFTER INSERT ON symbols BEGIN
-    INSERT INTO symbols_fts(rowid, name, type, parent, file_path)
-    VALUES (new.id, new.name, new.type, new.parent, new.file_path);
+    INSERT INTO symbols_fts(rowid, name, type, parent, file_path, name_tokens, body_snippet)
+    VALUES (new.id, new.name, new.type, new.parent, new.file_path, new.name_tokens, new.body_snippet);
 END;
 
 CREATE TRIGGER IF NOT EXISTS symbols_fts_ad AFTER DELETE ON symbols BEGIN
-    INSERT INTO symbols_fts(symbols_fts, rowid, name, type, parent, file_path)
-    VALUES ('delete', old.id, old.name, old.type, old.parent, old.file_path);
+    INSERT INTO symbols_fts(symbols_fts, rowid, name, type, parent, file_path, name_tokens, body_snippet)
+    VALUES ('delete', old.id, old.name, old.type, old.parent, old.file_path, old.name_tokens, old.body_snippet);
 END;
 
 CREATE TRIGGER IF NOT EXISTS symbols_fts_au AFTER UPDATE ON symbols BEGIN
-    INSERT INTO symbols_fts(symbols_fts, rowid, name, type, parent, file_path)
-    VALUES ('delete', old.id, old.name, old.type, old.parent, old.file_path);
-    INSERT INTO symbols_fts(rowid, name, type, parent, file_path)
-    VALUES (new.id, new.name, new.type, new.parent, new.file_path);
+    INSERT INTO symbols_fts(symbols_fts, rowid, name, type, parent, file_path, name_tokens, body_snippet)
+    VALUES ('delete', old.id, old.name, old.type, old.parent, old.file_path, old.name_tokens, old.body_snippet);
+    INSERT INTO symbols_fts(rowid, name, type, parent, file_path, name_tokens, body_snippet)
+    VALUES (new.id, new.name, new.type, new.parent, new.file_path, new.name_tokens, new.body_snippet);
 END;
 
 CREATE TABLE IF NOT EXISTS refs (
@@ -106,6 +129,34 @@ func OpenIndex(root string) (*sql.DB, error) {
 
 	// Single writer — serialise all writes through one connection.
 	db.SetMaxOpenConns(1)
+
+	// Bootstrap the meta table alone so we can read the stored schema version
+	// before applying the full schema. This is a no-op on an already-initialised DB.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("cannot bootstrap meta table: %w", err)
+	}
+
+	// Check stored schema version before applying any DDL.
+	// If the index was built with a different version, refuse to open it so
+	// the caller can surface a clear "run --rebuild" message.
+	var storedVersionStr string
+	err = db.QueryRow(`SELECT value FROM meta WHERE key = 'version'`).Scan(&storedVersionStr)
+	if err != nil && err != sql.ErrNoRows {
+		db.Close()
+		return nil, fmt.Errorf("cannot read meta version: %w", err)
+	}
+	if storedVersionStr != "" {
+		stored, convErr := strconv.Atoi(storedVersionStr)
+		if convErr != nil {
+			db.Close()
+			return nil, fmt.Errorf("cannot parse meta version %q: %w", storedVersionStr, convErr)
+		}
+		if stored != indexVersion {
+			db.Close()
+			return nil, &SchemaMismatchError{Stored: stored, Current: indexVersion}
+		}
+	}
 
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
@@ -174,8 +225,8 @@ func WriteFile(db *sql.DB, rel string, entry FileEntry) error {
 
 	// Batch-insert symbols.
 	stmt, err := tx.Prepare(
-		`INSERT INTO symbols (file_path, name, type, start_line, end_line, parent)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO symbols (file_path, name, type, start_line, end_line, parent, name_tokens, body_snippet)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 	)
 	if err != nil {
 		return fmt.Errorf("WriteFile prepare symbols: %w", err)
@@ -183,7 +234,8 @@ func WriteFile(db *sql.DB, rel string, entry FileEntry) error {
 	defer stmt.Close()
 
 	for _, s := range entry.Symbols {
-		if _, err := stmt.Exec(rel, s.Name, string(s.Type), s.StartLine, s.EndLine, s.Parent); err != nil {
+		nameTokens := strings.Join(splitIdentifier(s.Name), " ")
+		if _, err := stmt.Exec(rel, s.Name, string(s.Type), s.StartLine, s.EndLine, s.Parent, nameTokens, s.BodySnippet); err != nil {
 			return fmt.Errorf("WriteFile insert symbol %q: %w", s.Name, err)
 		}
 	}
@@ -260,6 +312,24 @@ func IndexedPaths(db *sql.DB) (map[string]bool, error) {
 		paths[p] = true
 	}
 	return paths, rows.Err()
+}
+
+// DropIndex removes the SQLite index file for root.
+// It is a no-op if the index does not exist yet (os.ErrNotExist is ignored).
+// The caller is responsible for ensuring no open DB handle points to the file.
+func DropIndex(root string) error {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("cannot resolve root path: %w", err)
+	}
+	path, err := dbPath(absRoot)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("cannot remove index: %w", err)
+	}
+	return nil
 }
 
 // --- helpers ---

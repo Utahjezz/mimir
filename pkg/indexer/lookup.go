@@ -138,20 +138,39 @@ func searchSymbolsSQL(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 
 // searchSymbolsFTS uses the FTS5 virtual table for fuzzy name matching.
 // Additional Type and FilePath filters are applied as SQL predicates on the join.
-// If the query contains no FTS5 operator (* " :), a trailing * is appended
-// automatically so bare tokens behave as prefix searches.
+//
+// When the query contains no FTS5 operators (* " : ^), each query word is split
+// via splitIdentifier and matched against the name_tokens column so that, for
+// example, "cesarina address" matches useCesarinaPrimaryAddress. A trailing *
+// is appended to every token so prefix matching still works (e.g. "addr").
+//
+// When the query already contains FTS5 operators the raw query is forwarded
+// unchanged to preserve power-user syntax.
 func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 	var conds []string
 	var args []any
 
-	// Auto-append * for bare token queries so "serv" matches "serve", "service", etc.
-	// Leave the query unchanged if it already contains FTS5 operators.
-	ftsQuery := q.FuzzyName
-	if !strings.ContainsAny(ftsQuery, "*\":^") {
-		ftsQuery += "*"
+	var ftsQuery string
+	if strings.ContainsAny(q.FuzzyName, "*\":^") {
+		// Power-user syntax — pass through unchanged, match on name column.
+		ftsQuery = q.FuzzyName
+	} else {
+		// Expand each query word to match against name_tokens OR body_snippet.
+		// "cesarina address" →
+		//   "(name_tokens : cesarina* OR body_snippet : cesarina*) AND
+		//    (name_tokens : address*  OR body_snippet : address*)"
+		words := tokenizeQuery(q.FuzzyName)
+		if len(words) == 0 {
+			return []SymbolRow{}, nil
+		}
+		parts := make([]string, len(words))
+		for i, w := range words {
+			parts[i] = "(name_tokens : " + w + "* OR body_snippet : " + w + "*)"
+		}
+		ftsQuery = strings.Join(parts, " AND ")
 	}
 
-	// FTS MATCH is the primary filter — name column only.
+	// FTS MATCH is the primary filter.
 	args = append(args, ftsQuery)
 
 	if q.Parent != "" {

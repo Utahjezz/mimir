@@ -4,8 +4,14 @@ package indexer
 // PruneFiles, IndexedPaths, and git_head meta.
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -466,6 +472,94 @@ func TestOpenIndex_NonGitDir_StoresEmptyGitHead(t *testing.T) {
 	}
 }
 
+// --- DropIndex ---
+
+func TestDropIndex_RemovesDBFile(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	root := t.TempDir()
+
+	// Create the index first.
+	db, err := OpenIndex(root)
+	if err != nil {
+		t.Fatalf("OpenIndex: %v", err)
+	}
+	db.Close()
+
+	// Drop it.
+	if err := DropIndex(root); err != nil {
+		t.Fatalf("DropIndex: %v", err)
+	}
+
+	// Opening again must succeed — the file was removed and gets recreated cleanly.
+	db2, err := OpenIndex(root)
+	if err != nil {
+		t.Fatalf("OpenIndex after DropIndex: %v", err)
+	}
+	defer db2.Close()
+
+	// The recreated index must be empty (no files).
+	paths, err := IndexedPaths(db2)
+	if err != nil {
+		t.Fatalf("IndexedPaths: %v", err)
+	}
+	if len(paths) != 0 {
+		t.Errorf("expected empty index after DropIndex, got %d paths", len(paths))
+	}
+}
+
+func TestDropIndex_NoOpWhenIndexAbsent(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	root := t.TempDir()
+
+	// No index created — DropIndex must not return an error.
+	if err := DropIndex(root); err != nil {
+		t.Errorf("DropIndex on absent index: unexpected error: %v", err)
+	}
+}
+
+func TestDropIndex_DiscardsExistingData(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	root := t.TempDir()
+
+	// Create index and write a file into it.
+	db, err := OpenIndex(root)
+	if err != nil {
+		t.Fatalf("OpenIndex: %v", err)
+	}
+	entry := FileEntry{
+		Language:  "go",
+		SHA256:    "abc123",
+		IndexedAt: time.Now().UTC(),
+		Symbols:   []SymbolInfo{{Name: "Foo", Type: Function, StartLine: 1, EndLine: 5}},
+	}
+	if err := WriteFile(db, "foo.go", entry); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	db.Close()
+
+	// Drop and reopen.
+	if err := DropIndex(root); err != nil {
+		t.Fatalf("DropIndex: %v", err)
+	}
+	db2, err := OpenIndex(root)
+	if err != nil {
+		t.Fatalf("OpenIndex after DropIndex: %v", err)
+	}
+	defer db2.Close()
+
+	// Previously written data must be gone.
+	paths, err := IndexedPaths(db2)
+	if err != nil {
+		t.Fatalf("IndexedPaths: %v", err)
+	}
+	if paths["foo.go"] {
+		t.Error("foo.go should not exist in freshly rebuilt index")
+	}
+}
+
 // --- GetFileMeta ---
 
 func TestGetFileMeta_ReturnsZeroForUnknownFile(t *testing.T) {
@@ -513,5 +607,115 @@ func TestGetFileMeta_ReturnsStoredMeta(t *testing.T) {
 	}
 	if meta.Size != 1234 {
 		t.Errorf("Size: got %d, want 1234", meta.Size)
+	}
+}
+
+// --- SchemaMismatchError ---
+
+// openRawDB opens a bare SQLite connection at the XDG path for root without
+// going through OpenIndex (so no version is written yet).
+func openRawDB(t *testing.T, root string) *sql.DB {
+	t.Helper()
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	sum := sha256.Sum256([]byte(absRoot))
+	repoID := filepath.Base(absRoot) + "-" + hex.EncodeToString(sum[:])[:8]
+	path := filepath.Join(dir, "mimir", "indexes", repoID, "index.db")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open raw: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+func TestOpenIndex_SchemaMismatch_ReturnsError(t *testing.T) {
+	root := t.TempDir()
+	raw := openRawDB(t, root)
+
+	// Bootstrap a minimal schema and write a stale version into meta.
+	if _, err := raw.Exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create meta table: %v", err)
+	}
+	staleVersion := indexVersion - 1
+	if staleVersion < 1 {
+		staleVersion = 1
+	}
+	if _, err := raw.Exec(`INSERT INTO meta (key, value) VALUES ('version', ?)`, fmt.Sprintf("%d", staleVersion)); err != nil {
+		t.Fatalf("insert stale version: %v", err)
+	}
+	raw.Close()
+
+	// OpenIndex must detect the mismatch and return a SchemaMismatchError.
+	db, err := OpenIndex(root)
+	if err == nil {
+		db.Close()
+		t.Fatal("expected error for stale schema version, got nil")
+	}
+
+	var mismatch *SchemaMismatchError
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("expected *SchemaMismatchError, got: %v", err)
+	}
+	if mismatch.Stored != staleVersion {
+		t.Errorf("Stored: got %d, want %d", mismatch.Stored, staleVersion)
+	}
+	if mismatch.Current != indexVersion {
+		t.Errorf("Current: got %d, want %d", mismatch.Current, indexVersion)
+	}
+}
+
+func TestOpenIndex_MatchingVersion_Succeeds(t *testing.T) {
+	root := t.TempDir()
+	raw := openRawDB(t, root)
+
+	// Bootstrap meta table with the current version — OpenIndex must succeed.
+	if _, err := raw.Exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create meta table: %v", err)
+	}
+	if _, err := raw.Exec(`INSERT INTO meta (key, value) VALUES ('version', ?)`, fmt.Sprintf("%d", indexVersion)); err != nil {
+		t.Fatalf("insert current version: %v", err)
+	}
+	raw.Close()
+
+	db, err := OpenIndex(root)
+	if err != nil {
+		t.Fatalf("OpenIndex with matching version: %v", err)
+	}
+	db.Close()
+}
+
+func TestOpenIndex_NoVersionRow_Succeeds(t *testing.T) {
+	// A brand-new DB (no meta table, no version row) must open fine.
+	root := t.TempDir()
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	db, err := OpenIndex(root)
+	if err != nil {
+		t.Fatalf("OpenIndex on fresh DB: %v", err)
+	}
+	db.Close()
+}
+
+func TestIsSchemaMismatch_TrueForWrappedError(t *testing.T) {
+	inner := &SchemaMismatchError{Stored: 1, Current: 3}
+	wrapped := fmt.Errorf("outer: %w", inner)
+	if !IsSchemaMismatch(wrapped) {
+		t.Error("IsSchemaMismatch should return true for wrapped SchemaMismatchError")
+	}
+}
+
+func TestIsSchemaMismatch_FalseForOtherError(t *testing.T) {
+	if IsSchemaMismatch(fmt.Errorf("some other error")) {
+		t.Error("IsSchemaMismatch should return false for unrelated error")
 	}
 }

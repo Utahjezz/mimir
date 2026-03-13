@@ -6,6 +6,7 @@ package indexer
 
 import (
 	"database/sql"
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -176,6 +177,31 @@ func TestSearchRefs_EmptyResult(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Errorf("expected 0 rows for unknown callee, got %d", len(rows))
+	}
+}
+
+// TestSearchRefs_EmptyResult_JSONNotNull ensures that an empty result set
+// marshals to a JSON array ("[]") rather than JSON null.
+// Regression: SearchRefs previously returned a nil slice which json.Marshal
+// encodes as null, breaking callers that expect an array.
+func TestSearchRefs_EmptyResult_JSONNotNull(t *testing.T) {
+	db := seedRefsDB(t)
+
+	rows, err := SearchRefs(db, RefQuery{CalleeName: "doesNotExist"})
+	if err != nil {
+		t.Fatalf("SearchRefs empty: %v", err)
+	}
+
+	data, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+
+	if string(data) == "null" {
+		t.Error("SearchRefs returned a nil slice: JSON output is null, want []")
+	}
+	if string(data) != "[]" {
+		t.Errorf("expected JSON [], got %s", string(data))
 	}
 }
 
@@ -465,7 +491,263 @@ func TestExtractCalls_TSXFindsCallSites(t *testing.T) {
 	}
 }
 
-// --- Python call + ref extraction ---
+// --- TSX JSX call + ref extraction ---
+
+// tsxJSXCallFixture contains JSX opening elements, self-closing elements, and
+// native HTML tags. Only PascalCase/uppercase-initial names should be captured.
+const tsxJSXCallFixture = `
+import React from 'react';
+
+function MeetingPointComponent() { return null; }
+function AddressBookForm() { return null; }
+function unused() { return null; }
+
+function Page() {
+  return (
+    <div>
+      <MeetingPointComponent key="mp" />
+      <AddressBookForm onSubmit={handleSubmit}>
+        <span>child</span>
+      </AddressBookForm>
+    </div>
+  );
+}
+`
+
+func TestExtractCalls_TSX_JSXSelfClosingElement(t *testing.T) {
+	calls, err := ExtractCalls("tsx", []byte(tsxJSXCallFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls TSX JSX: %v", err)
+	}
+
+	names := make(map[string]bool, len(calls))
+	for _, c := range calls {
+		names[c.CalleeName] = true
+	}
+
+	if !names["MeetingPointComponent"] {
+		t.Error("MeetingPointComponent is used as a self-closing JSX element and must appear in extracted refs")
+	}
+}
+
+func TestExtractCalls_TSX_JSXOpeningElement(t *testing.T) {
+	calls, err := ExtractCalls("tsx", []byte(tsxJSXCallFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls TSX JSX: %v", err)
+	}
+
+	names := make(map[string]bool, len(calls))
+	for _, c := range calls {
+		names[c.CalleeName] = true
+	}
+
+	if !names["AddressBookForm"] {
+		t.Error("AddressBookForm is used as a JSX opening element and must appear in extracted refs")
+	}
+}
+
+func TestExtractCalls_TSX_NativeHTMLTagsNotCaptured(t *testing.T) {
+	calls, err := ExtractCalls("tsx", []byte(tsxJSXCallFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls TSX JSX: %v", err)
+	}
+
+	names := make(map[string]bool, len(calls))
+	for _, c := range calls {
+		names[c.CalleeName] = true
+	}
+
+	for _, tag := range []string{"div", "span", "input", "button", "p", "h1"} {
+		if names[tag] {
+			t.Errorf("native HTML tag %q must NOT appear in extracted refs", tag)
+		}
+	}
+}
+
+func TestExtractCalls_TSX_UnusedComponentNotCaptured(t *testing.T) {
+	calls, err := ExtractCalls("tsx", []byte(tsxJSXCallFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls TSX JSX: %v", err)
+	}
+
+	names := make(map[string]bool, len(calls))
+	for _, c := range calls {
+		names[c.CalleeName] = true
+	}
+
+	if names["unused"] {
+		t.Error("unused is never referenced as a JSX element or called and must not appear in extracted refs")
+	}
+}
+
+// tsxJSXLineFixture is used to verify that the line number of a JSX ref points
+// to the tag's opening line, not the component definition line.
+const tsxJSXLineFixture = `import React from 'react';
+
+function Widget() { return null; }
+
+function App() {
+  return <Widget />;
+}
+`
+
+func TestExtractCalls_TSX_JSXRefLineNumber(t *testing.T) {
+	calls, err := ExtractCalls("tsx", []byte(tsxJSXLineFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls TSX JSX line: %v", err)
+	}
+
+	for _, c := range calls {
+		if c.CalleeName == "Widget" {
+			// <Widget /> appears on line 6.
+			if c.Line != 6 {
+				t.Errorf("Widget JSX ref: got line %d, want 6", c.Line)
+			}
+			return
+		}
+	}
+	t.Error("Widget JSX ref not found in extracted calls")
+}
+
+// --- JSX in plain JavaScript (.jsx) ---
+
+// jsxComponentFixture exercises JSX extraction for the JavaScript grammar
+// (used for .jsx files). It mirrors tsxJSXCallFixture so the same set of
+// assertions can be made against both grammars.
+//
+// Layout:
+//
+//	line 1  – import
+//	line 3  – NavBar declaration (self-closing usage on line 11)
+//	line 4  – SideBar declaration (opening-element usage on line 12)
+//	line 5  – lowercaseComp declaration (must NOT be captured)
+//	line 7  – Page function
+//	line 9  – <div> native tag (must NOT be captured)
+//	line 10 – <section> native tag (must NOT be captured)
+//	line 11 – <NavBar /> self-closing
+//	line 12 – <SideBar …> opening element
+//	line 13 –   <span> nested native tag (must NOT be captured)
+const jsxComponentFixture = `import React from 'react';
+
+function NavBar() { return null; }
+function SideBar() { return null; }
+function lowercaseComp() { return null; }
+
+function Page() {
+  return (
+    <div>
+      <section>
+        <NavBar />
+        <SideBar className="side">
+          <span>child</span>
+        </SideBar>
+      </section>
+    </div>
+  );
+}
+`
+
+// jsxLineFixture is used to verify that the line number of a JSX ref in a
+// .jsx file points to the tag's usage line, not the component definition line.
+//
+// Layout:
+//
+//	line 1  – import
+//	line 3  – Logo declaration
+//	line 5  – App function
+//	line 6  – return <Logo />;
+const jsxLineFixture = `import React from 'react';
+
+function Logo() { return null; }
+
+function App() {
+  return <Logo />;
+}
+`
+
+func TestExtractCalls_JSX_SelfClosingElement(t *testing.T) {
+	calls, err := ExtractCalls("javascript", []byte(jsxComponentFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls JS JSX: %v", err)
+	}
+
+	names := make(map[string]bool, len(calls))
+	for _, c := range calls {
+		names[c.CalleeName] = true
+	}
+
+	if !names["NavBar"] {
+		t.Error("NavBar is used as a self-closing JSX element and must appear in extracted refs for .jsx files")
+	}
+}
+
+func TestExtractCalls_JSX_OpeningElement(t *testing.T) {
+	calls, err := ExtractCalls("javascript", []byte(jsxComponentFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls JS JSX: %v", err)
+	}
+
+	names := make(map[string]bool, len(calls))
+	for _, c := range calls {
+		names[c.CalleeName] = true
+	}
+
+	if !names["SideBar"] {
+		t.Error("SideBar is used as a JSX opening element and must appear in extracted refs for .jsx files")
+	}
+}
+
+func TestExtractCalls_JSX_NativeHTMLTagsNotCaptured(t *testing.T) {
+	calls, err := ExtractCalls("javascript", []byte(jsxComponentFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls JS JSX: %v", err)
+	}
+
+	names := make(map[string]bool, len(calls))
+	for _, c := range calls {
+		names[c.CalleeName] = true
+	}
+
+	for _, tag := range []string{"div", "section", "span", "input", "button", "p", "h1"} {
+		if names[tag] {
+			t.Errorf("native HTML tag %q must NOT appear in extracted refs for .jsx files", tag)
+		}
+	}
+}
+
+func TestExtractCalls_JSX_UnusedComponentNotCaptured(t *testing.T) {
+	calls, err := ExtractCalls("javascript", []byte(jsxComponentFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls JS JSX: %v", err)
+	}
+
+	names := make(map[string]bool, len(calls))
+	for _, c := range calls {
+		names[c.CalleeName] = true
+	}
+
+	if names["lowercaseComp"] {
+		t.Error("lowercaseComp is never referenced as a JSX element or called and must not appear in extracted refs")
+	}
+}
+
+func TestExtractCalls_JSX_RefLineNumber(t *testing.T) {
+	calls, err := ExtractCalls("javascript", []byte(jsxLineFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls JS JSX line: %v", err)
+	}
+
+	for _, c := range calls {
+		if c.CalleeName == "Logo" {
+			// <Logo /> appears on line 6.
+			if c.Line != 6 {
+				t.Errorf("Logo JSX ref: got line %d, want 6", c.Line)
+			}
+			return
+		}
+	}
+	t.Error("Logo JSX ref not found in extracted calls for .jsx file")
+}
 
 // pyCallFixture has plain calls, method calls, and a function assigned to a variable.
 const pyCallFixture = `

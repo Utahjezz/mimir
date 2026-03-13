@@ -93,7 +93,7 @@ var registeredCallLanguages = []struct {
 		name: "javascript",
 		callDefinition: callDefinition{
 			language:  javascript.Language,
-			callQuery: javascript.CallQueries,
+			callQuery: javascript.JSXCallQueries,
 			refQuery:  javascript.RefQueries,
 		},
 	},
@@ -109,7 +109,7 @@ var registeredCallLanguages = []struct {
 		name: "tsx",
 		callDefinition: callDefinition{
 			language:  typescript.TSXLanguage,
-			callQuery: typescript.CallQueries,
+			callQuery: typescript.TSXCallQueries,
 			refQuery:  typescript.RefQueries,
 		},
 	},

@@ -6,10 +6,15 @@ import "github.com/spf13/cobra"
 func Register(root *cobra.Command) {
 	// index
 	indexCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output stats as JSON")
+	indexCmd.Flags().BoolVar(&indexRebuild, "rebuild", false, "Drop the existing index and reindex from scratch")
 	root.AddCommand(indexCmd)
 
 	// symbols + symbol (no flags)
 	root.AddCommand(symbolsCmd)
+
+	// symbol
+	symbolCmd.Flags().StringVar(&symbolType, "type", "", "Narrow by symbol type (function, method, class, ...)")
+	symbolCmd.Flags().BoolVar(&symbolJSON, "json", false, "Output results as JSON")
 	root.AddCommand(symbolCmd)
 
 	// search
@@ -35,10 +40,12 @@ func Register(root *cobra.Command) {
 	// tree
 	treeCmd.Flags().BoolVar(&treeJSON, "json", false, "Output tree as JSON")
 	treeCmd.Flags().BoolVar(&treeFiles, "files", false, "Show individual files under each directory")
+	treeCmd.Flags().IntVar(&treeDepth, "depth", 0, "Limit directory depth (0 = unlimited)")
 	root.AddCommand(treeCmd)
 
 	// callers
 	callersCmd.Flags().BoolVar(&callersJSON, "json", false, "Output results as JSON")
+	callersCmd.Flags().IntVar(&callersDepth, "depth", 2, "Recursion depth for caller traversal (0 = unlimited)")
 	root.AddCommand(callersCmd)
 
 	// dead

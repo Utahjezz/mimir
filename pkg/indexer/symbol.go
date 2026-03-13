@@ -21,4 +21,8 @@ type SymbolInfo struct {
 	// Parent holds the name of the enclosing class/struct/interface for methods,
 	// constructors, and properties. Empty for top-level symbols.
 	Parent string `json:"parent,omitempty"`
+	// BodySnippet holds the first up-to-10 lines of the symbol's source body.
+	// Populated at index time from the already-read file bytes; not persisted
+	// in query results (omitempty keeps JSON output clean).
+	BodySnippet string `json:"body_snippet,omitempty"`
 }

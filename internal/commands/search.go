@@ -53,7 +53,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(results) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "no symbols found")
+		if searchFuzzy != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "no FTS5 matches for %q — try --like or --name for exact/prefix search\n", searchFuzzy)
+		} else {
+			fmt.Fprintln(cmd.OutOrStdout(), "no symbols found")
+		}
 		return nil
 	}
 

@@ -3,7 +3,11 @@ package indexer
 import "time"
 
 // indexVersion is bumped when the on-disk format changes in a breaking way.
-const indexVersion = 3
+const indexVersion = 5
+
+// SchemaVersion returns the current index schema version.
+// Exposed so CLI commands can print it alongside the binary version.
+func SchemaVersion() int { return indexVersion }
 
 // CallSite records a single outgoing call extracted from a source file.
 // CalleeName is the bare identifier of the called function or method.
