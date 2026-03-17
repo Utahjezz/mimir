@@ -12,6 +12,20 @@ builds:
       - -s -w -X main.version={{.Version}}
     env:
       - CGO_ENABLED=1
+      - >-
+        {{- if eq .Os "darwin" }}
+          {{- if eq .Arch "amd64" }}CC=clang -arch x86_64 -isysroot {{ .Env.SDK_PATH }}
+          {{- else if eq .Arch "arm64" }}CC=clang -arch arm64 -isysroot {{ .Env.SDK_PATH }}
+          {{- end }}
+        {{- else if eq .Os "linux" }}
+          {{- if eq .Arch "amd64" }}CC=zig cc -target x86_64-linux-musl -lc
+          {{- else if eq .Arch "arm64" }}CC=zig cc -target aarch64-linux-musl -lc
+          {{- end }}
+        {{- else if eq .Os "windows" }}
+          {{- if eq .Arch "amd64" }}CC=zig cc -target x86_64-windows-gnu -lc
+          {{- else if eq .Arch "arm64" }}CC=zig cc -target aarch64-windows-gnu -lc
+          {{- end }}
+        {{- end }}
     goos:
       - linux
       - darwin
@@ -38,7 +52,7 @@ checksum:
   name_template: 'checksums.txt'
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc

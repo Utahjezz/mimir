@@ -7,12 +7,18 @@ on:
 
 jobs:
   goreleaser:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
           go-version: '1.26'
+      - uses: goto-bus-stop/setup-zig@v2
+      - name: Get macOS SDK path
+        id: macos_sdk
+        run: echo "path=$(xcrun --show-sdk-path)" >> $GITHUB_OUTPUT
       - name: Build and Release with GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -22,4 +28,5 @@ jobs:
           version: '~> v2'
           args: release --clean
         env:
+          SDK_PATH: ${{ steps.macos_sdk.outputs.path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
