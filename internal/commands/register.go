@@ -35,6 +35,8 @@ func Register(root *cobra.Command) {
 	refsCmd.Flags().StringVar(&refsCallee, "callee", "", "Filter by callee name")
 	refsCmd.Flags().StringVar(&refsFile, "file", "", "Filter by caller file path")
 	refsCmd.Flags().BoolVar(&refsJSON, "json", false, "Output results as JSON")
+	refsCmd.Flags().BoolVar(&refsHotspot, "hotspot", false, "Print the top-N most-called symbols ranked by inbound call count")
+	refsCmd.Flags().IntVar(&refsLimit, "limit", 20, "Number of results to return for --hotspot (default 20)")
 	root.AddCommand(refsCmd)
 
 	// tree

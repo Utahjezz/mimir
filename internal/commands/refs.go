@@ -9,17 +9,20 @@ import (
 )
 
 var (
-	refsCaller string
-	refsCallee string
-	refsFile   string
-	refsJSON   bool
+	refsCaller  string
+	refsCallee  string
+	refsFile    string
+	refsJSON    bool
+	refsHotspot bool
+	refsLimit   int
 )
 
 var refsCmd = &cobra.Command{
 	Use:   "refs <root>",
 	Short: "Search cross-references in the index",
 	Long: `Query the refs table for <root>. Use --caller, --callee, or --file to filter.
-With no flags, all indexed call sites are returned.`,
+With no flags, all indexed call sites are returned.
+Use --hotspot to print the top-N most-called symbols ranked by inbound call count.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRefs,
 }
@@ -32,6 +35,34 @@ func runRefs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot open index: %w", err)
 	}
 	defer db.Close()
+
+	if refsHotspot {
+		entries, err := indexer.HotspotSymbols(db, refsLimit)
+		if err != nil {
+			return fmt.Errorf("hotspot query failed: %w", err)
+		}
+
+		if refsJSON {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(entries)
+		}
+
+		if len(entries) == 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "no call refs found in index")
+			return nil
+		}
+
+		w := cmd.OutOrStdout()
+		fmt.Fprintf(w, "%-5s  %-40s  %10s  %s\n", "rank", "callee", "call_count", "file")
+		fmt.Fprintf(w, "%-5s  %-40s  %10s  %s\n", "----", "------", "----------", "----")
+		for i, e := range entries {
+			file := e.FilePath
+			if file == "" {
+				file = "(external)"
+			}
+			fmt.Fprintf(w, "%-5d  %-40s  %10d  %s\n", i+1, e.CalleeName, e.CallCount, file)
+		}
+		return nil
+	}
 
 	q := indexer.RefQuery{
 		CallerName: refsCaller,

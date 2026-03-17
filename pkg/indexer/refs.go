@@ -1,6 +1,6 @@
 package indexer
 
-// refs.go — cross-reference query types and SearchRefs implementation.
+// refs.go — cross-reference query types, SearchRefs, and HotspotSymbols.
 
 import (
 	"database/sql"
@@ -65,6 +65,42 @@ func SearchRefs(db *sql.DB, q RefQuery) ([]RefRow, error) {
 			return nil, fmt.Errorf("SearchRefs scan: %w", err)
 		}
 		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// HotspotEntry is a single row returned by HotspotSymbols.
+type HotspotEntry struct {
+	CalleeName string `json:"callee_name"`
+	CallCount  int    `json:"call_count"`
+	FilePath   string `json:"file_path"` // empty when callee is not in the symbol index (e.g. stdlib)
+}
+
+// HotspotSymbols returns the top-limit most-called symbols ranked by inbound
+// call count. The file path is resolved via a LEFT JOIN on the symbols table;
+// it will be empty for callees not present in the index (external/stdlib calls).
+func HotspotSymbols(db *sql.DB, limit int) ([]HotspotEntry, error) {
+	const query = `
+		SELECT r.callee_name, COUNT(*) AS call_count, COALESCE(MIN(s.file_path), '') AS file_path
+		FROM refs r
+		LEFT JOIN symbols s ON s.name = r.callee_name
+		GROUP BY r.callee_name
+		ORDER BY call_count DESC
+		LIMIT ?`
+
+	rows, err := db.Query(query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("HotspotSymbols query: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]HotspotEntry, 0, limit)
+	for rows.Next() {
+		var e HotspotEntry
+		if err := rows.Scan(&e.CalleeName, &e.CallCount, &e.FilePath); err != nil {
+			return nil, fmt.Errorf("HotspotSymbols scan: %w", err)
+		}
+		results = append(results, e)
 	}
 	return results, rows.Err()
 }
