@@ -1,0 +1,82 @@
+name: Bug Report
+description: Report a bug or unexpected behaviour
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as possible.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Exact commands or steps to reproduce the behaviour.
+      placeholder: |
+        1. Run `mimir index ./myrepo`
+        2. Run `mimir search ./myrepo --name "Foo"`
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behaviour
+      description: What actually happened? Include the full output or error message.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: mimir_version
+    attributes:
+      label: Mimir Version
+      placeholder: "e.g. v0.1.0 — run: mimir --version"
+    validations:
+      required: true
+
+  - type: input
+    id: go_version
+    attributes:
+      label: Go Version
+      placeholder: "e.g. go1.26.1 — run: go version"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context — repository being indexed, file types, index size, etc.
+    validations:
+      required: false
