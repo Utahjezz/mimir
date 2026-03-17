@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/utahjezz/mimir/internal/commands"
-	"github.com/utahjezz/mimir/pkg/indexer"
+	"github.com/Utahjezz/mimir/internal/commands"
+	"github.com/Utahjezz/mimir/pkg/indexer"
 )
 
 // version is the binary version string. It defaults to "dev" and is

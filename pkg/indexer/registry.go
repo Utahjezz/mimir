@@ -3,11 +3,11 @@ package indexer
 import (
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
-	"github.com/utahjezz/mimir/pkg/indexer/languages/csharp"
-	"github.com/utahjezz/mimir/pkg/indexer/languages/golang"
-	"github.com/utahjezz/mimir/pkg/indexer/languages/javascript"
-	"github.com/utahjezz/mimir/pkg/indexer/languages/python"
-	"github.com/utahjezz/mimir/pkg/indexer/languages/typescript"
+	"github.com/Utahjezz/mimir/pkg/indexer/languages/csharp"
+	"github.com/Utahjezz/mimir/pkg/indexer/languages/golang"
+	"github.com/Utahjezz/mimir/pkg/indexer/languages/javascript"
+	"github.com/Utahjezz/mimir/pkg/indexer/languages/python"
+	"github.com/Utahjezz/mimir/pkg/indexer/languages/typescript"
 )
 
 // langEntry holds the resolved language and query string for a given extension,

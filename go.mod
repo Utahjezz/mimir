@@ -1,4 +1,4 @@
-module github.com/utahjezz/mimir
+module github.com/Utahjezz/mimir
 
 go 1.26.1
 

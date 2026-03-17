@@ -17,7 +17,7 @@ mimir dead ./myrepo --unexported
 - **6 languages** — Go, JavaScript, TypeScript, TSX, Python, C#
 - **Incremental re-index** — mtime+size stat-skip; only changed files are re-parsed
 - **`--json` on every command** — pipe to `jq` or consume programmatically
-- **Single binary** — pure Go, no CGo, no C toolchain required
+- **Single binary** — requires Go 1.26+ and a C compiler (CGO, via tree-sitter)
 - **FTS5 full-text search** — fuzzy symbol search with prefix wildcards (`proc*`)
 - **Dot-notation** — `Class.method`, `*.method`, `Class.*` in `--name` / `--like`
 
@@ -26,18 +26,18 @@ mimir dead ./myrepo --unexported
 ## Installation
 
 ```bash
-go install github.com/utahjezz/mimir/cmd/mimir@latest
+go install github.com/Utahjezz/mimir/cmd/mimir@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/utahjezz/mimir
+git clone https://github.com/Utahjezz/mimir
 cd mimir
 go build -o mimir ./cmd/mimir
 ```
 
-**Requirements**: Go 1.21+. No other dependencies.
+**Requirements**: Go 1.26+, and a C compiler (macOS: Xcode CLT — `xcode-select --install` · Linux: `gcc` · Windows: TDM-GCC or MSYS2).
 
 ---
 
@@ -181,7 +181,6 @@ Then add one entry to `buildLangMap()` in `pkg/indexer/registry.go`.
 ```bash
 # Run all tests
 go test ./...
-# Expected: 194 pass, 1 skip (git-head test skipped — no commits yet), 0 fail
 
 # Build binary
 go build -o mimir ./cmd/mimir
@@ -201,7 +200,6 @@ cmd/mimir/          ← entry point
 internal/commands/  ← one file per subcommand
 pkg/indexer/        ← core: walker, parser, store, queries, facade
   languages/        ← per-language tree-sitter grammars + queries
-.opencode/skills/mimir/SKILL.md  ← AI agent usage guide
 ```
 
 ---

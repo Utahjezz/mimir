@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/utahjezz/mimir/pkg/indexer"
+	"github.com/Utahjezz/mimir/pkg/indexer"
 )
 
 var jsonOutput bool

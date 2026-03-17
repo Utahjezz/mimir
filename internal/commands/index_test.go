@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/utahjezz/mimir/pkg/indexer"
+	"github.com/Utahjezz/mimir/pkg/indexer"
 
 	_ "modernc.org/sqlite"
 )

@@ -18,7 +18,7 @@ Thank you for your interest in contributing! This document covers everything you
 
 ```bash
 # Clone
-git clone https://github.com/utahjezz/mimir
+git clone https://github.com/Utahjezz/mimir
 cd mimir
 
 # Build
@@ -171,7 +171,7 @@ docs: update CONTRIBUTING with CGO prereqs
 
 Before opening an issue:
 - Search existing issues to avoid duplicates
-- Try reproducing with the latest version (`go install github.com/utahjezz/mimir/cmd/mimir@latest`)
+- Try reproducing with the latest version (`go install github.com/Utahjezz/mimir/cmd/mimir@latest`)
 
 When reporting a bug, include:
 - Mimir version (`mimir --version`)
