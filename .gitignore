@@ -24,4 +24,4 @@ coverage.html
 .vscode/
 *.swp
 *.swo
-.opencode
+.opencode/
