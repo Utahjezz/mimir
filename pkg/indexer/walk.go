@@ -167,6 +167,16 @@ func Run(root string, db *sql.DB) (IndexStats, error) {
 	}
 	stats.Removed = len(deleted)
 
+	// Stamp the index with the time this run completed so that ShouldRefresh
+	// can cheaply decide whether a re-walk is needed on the next query.
+	if _, err := db.Exec(
+		`INSERT INTO meta (key, value) VALUES ('last_indexed_at', ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		time.Now().UTC().Format(time.RFC3339),
+	); err != nil {
+		return stats, fmt.Errorf("cannot update last_indexed_at: %w", err)
+	}
+
 	return stats, nil
 }
 

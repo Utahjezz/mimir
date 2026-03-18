@@ -4,17 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/Utahjezz/mimir/pkg/indexer"
+	"github.com/spf13/cobra"
 )
 
 var (
-	searchName  string
-	searchLike  string
-	searchFuzzy string
-	searchType  string
-	searchFile  string
-	searchJSON  bool
+	searchName      string
+	searchLike      string
+	searchFuzzy     string
+	searchType      string
+	searchFile      string
+	searchJSON      bool
+	searchNoRefresh bool
 )
 
 var searchCmd = &cobra.Command{
@@ -34,6 +35,12 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot open index: %w", err)
 	}
 	defer db.Close()
+
+	if !searchNoRefresh {
+		if _, err := indexer.AutoRefresh(root, db, RefreshThreshold); err != nil {
+			return fmt.Errorf("auto-refresh: %w", err)
+		}
+	}
 
 	q := indexer.SearchQuery{
 		Name:      searchName,

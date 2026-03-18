@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/Utahjezz/mimir/pkg/indexer"
+	"github.com/spf13/cobra"
 )
 
 var (
-	treeJSON  bool
-	treeFiles bool
-	treeDepth int
+	treeJSON      bool
+	treeFiles     bool
+	treeDepth     int
+	treeNoRefresh bool
 )
 
 var treeCmd = &cobra.Command{
@@ -32,6 +33,12 @@ func runTree(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot open index: %w", err)
 	}
 	defer db.Close()
+
+	if !treeNoRefresh {
+		if _, err := indexer.AutoRefresh(root, db, RefreshThreshold); err != nil {
+			return fmt.Errorf("auto-refresh: %w", err)
+		}
+	}
 
 	tree, err := indexer.GetFileTree(db)
 	if err != nil {

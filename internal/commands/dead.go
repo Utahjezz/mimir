@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/Utahjezz/mimir/pkg/indexer"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -13,6 +13,7 @@ var (
 	deadFile       string
 	deadUnexported bool
 	deadJSON       bool
+	deadNoRefresh  bool
 )
 
 var deadCmd = &cobra.Command{
@@ -40,6 +41,12 @@ func runDead(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot open index: %w", err)
 	}
 	defer db.Close()
+
+	if !deadNoRefresh {
+		if _, err := indexer.AutoRefresh(root, db, RefreshThreshold); err != nil {
+			return fmt.Errorf("auto-refresh: %w", err)
+		}
+	}
 
 	q := indexer.DeadCodeQuery{
 		Type:           deadType,

@@ -4,17 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/Utahjezz/mimir/pkg/indexer"
+	"github.com/spf13/cobra"
 )
 
 var (
-	refsCaller  string
-	refsCallee  string
-	refsFile    string
-	refsJSON    bool
-	refsHotspot bool
-	refsLimit   int
+	refsCaller    string
+	refsCallee    string
+	refsFile      string
+	refsJSON      bool
+	refsHotspot   bool
+	refsLimit     int
+	refsNoRefresh bool
 )
 
 var refsCmd = &cobra.Command{
@@ -35,6 +36,12 @@ func runRefs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot open index: %w", err)
 	}
 	defer db.Close()
+
+	if !refsNoRefresh {
+		if _, err := indexer.AutoRefresh(root, db, RefreshThreshold); err != nil {
+			return fmt.Errorf("auto-refresh: %w", err)
+		}
+	}
 
 	if refsHotspot {
 		entries, err := indexer.HotspotSymbols(db, refsLimit)

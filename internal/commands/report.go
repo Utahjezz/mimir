@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/Utahjezz/mimir/pkg/indexer"
+	"github.com/spf13/cobra"
 )
 
-var reportJSON bool
+var (
+	reportJSON      bool
+	reportNoRefresh bool
+)
 
 var reportCmd = &cobra.Command{
 	Use:   "report <root>",
@@ -26,6 +29,12 @@ func runReport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot open index: %w", err)
 	}
 	defer db.Close()
+
+	if !reportNoRefresh {
+		if _, err := indexer.AutoRefresh(root, db, RefreshThreshold); err != nil {
+			return fmt.Errorf("auto-refresh: %w", err)
+		}
+	}
 
 	report, err := indexer.ReportIndex(db)
 	if err != nil {
