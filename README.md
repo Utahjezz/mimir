@@ -196,8 +196,8 @@ mimir report ./myrepo --json | jq '.Languages'
 2. **Stat-skip** — compare mtime+size against stored `FileMeta`; skip if unchanged
 3. **Parse** — tree-sitter extracts symbols and call references per file
 4. **Write** — single collector goroutine writes to SQLite (no locking errors)
-5. **Query** — cobra commands open the index read-only and return results
-6. **Auto-refresh** — before step 5, query commands check `last_indexed_at` in meta; if stale they re-run steps 1–4 transparently
+5. **Query** — cobra commands open the index, run queries, and return results (read-only when the index is up to date)
+6. **Auto-refresh** — query commands check `last_indexed_at` in meta; if stale they transparently re-run steps 1–4 and update SQLite before returning results
 
 **DB location**: `~/.config/mimir/indexes/<repo-id>/index.db`
 (override with `$XDG_CONFIG_HOME`)
