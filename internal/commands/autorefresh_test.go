@@ -134,13 +134,11 @@ func TestAutoRefresh_EndToEnd_FreshIndexSkipsRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runSearch: %v", err)
 	}
-	// GhostSymbol should NOT appear — the index is fresh, no re-walk.
-	if out != "" && out != "no symbols found\n" {
-		t.Logf("output: %q", out)
+	// GhostSymbol should NOT appear — the index is fresh, so the auto-refresh
+	// must not run and the result should be deterministic.
+	if out != "no symbols found\n" {
+		t.Errorf("expected no symbols for GhostSymbol with fresh index, got: %q", out)
 	}
-	// The important assertion: no error and the command completed successfully.
-	// Whether GhostSymbol appears or not depends on timing; we just verify the
-	// path doesn't panic or fail.
 }
 
 // --- --no-refresh flag ---
