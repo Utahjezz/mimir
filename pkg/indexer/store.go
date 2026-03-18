@@ -198,7 +198,7 @@ func GetLastIndexedAt(db *sql.DB) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, fmt.Errorf("GetLastIndexedAt: malformed timestamp %q: %w", raw, err)
 	}
-	return t, nil
+	return t.UTC(), nil
 }
 
 // GetFileMeta returns the stored hash, mtime, and size for rel, or a zero-value
