@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,7 +119,7 @@ func TestAutoRefresh_EndToEnd_PicksUpNewSymbol(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runSearch: %v", err)
 	}
-	if out == "" || bytes.Equal([]byte(out), []byte("no symbols found\n")) {
+	if !strings.Contains(out, "BrandNewSymbol") {
 		t.Errorf("expected BrandNewSymbol in output, got: %q", out)
 	}
 }
