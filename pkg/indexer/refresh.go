@@ -3,8 +3,11 @@ package indexer
 import (
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 )
+
+var autoRefreshMutext sync.Mutex
 
 // ShouldRefresh reports whether the index is stale and needs a re-walk.
 // It returns true when:
@@ -40,6 +43,9 @@ func ShouldRefresh(db *sql.DB, threshold time.Duration) (bool, error) {
 // This is the single entry point all query commands should use instead of
 // calling Run() directly.
 func AutoRefresh(root string, db *sql.DB, threshold time.Duration) (IndexStats, error) {
+	autoRefreshMutext.Lock()
+	defer autoRefreshMutext.Unlock()
+
 	stale, err := ShouldRefresh(db, threshold)
 	if err != nil {
 		return IndexStats{}, fmt.Errorf("auto-refresh: %w", err)
