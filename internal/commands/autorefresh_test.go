@@ -26,10 +26,20 @@ func runSearchCmd(t *testing.T, root, name string, noRefresh bool) (string, erro
 	prevName := searchName
 	prevNoRefresh := searchNoRefresh
 	prevThreshold := RefreshThreshold
+	prevJSON := searchJSON
+	prevLike := searchLike
+	prevFuzzy := searchFuzzy
+	prevType := searchType
+	prevFile := searchFile
 	t.Cleanup(func() {
 		searchName = prevName
 		searchNoRefresh = prevNoRefresh
 		RefreshThreshold = prevThreshold
+		searchJSON = prevJSON
+		searchLike = prevLike
+		searchFuzzy = prevFuzzy
+		searchType = prevType
+		searchFile = prevFile
 	})
 
 	searchName = name
