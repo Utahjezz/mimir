@@ -131,7 +131,7 @@ func TestShouldRefresh_TableDriven(t *testing.T) {
 	}{
 		{"absent key always stale", -1, 10 * time.Second, true},
 		{"just indexed fresh", 1 * time.Second, 10 * time.Second, false},
-		{"exactly at threshold not stale", 9 * time.Second, 10 * time.Second, false},
+		{"just below threshold not stale", 9 * time.Second, 10 * time.Second, false},
 		{"one second past threshold stale", 11 * time.Second, 10 * time.Second, true},
 		{"zero threshold always stale", 1 * time.Second, 0, true},
 	}
