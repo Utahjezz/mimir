@@ -204,6 +204,15 @@ func TestNoRefresh_PreservesStaleResultsExactly(t *testing.T) {
 	if out == "" || out == "no symbols found\n" {
 		t.Errorf("KnownSymbol should still be findable with --no-refresh, got: %q", out)
 	}
+
+	// --no-refresh: ExtraSymbol was added after indexing and must NOT be found.
+	outExtra, err := runSearchCmd(t, root, "ExtraSymbol", true /* noRefresh */)
+	if err != nil {
+		t.Fatalf("runSearch --no-refresh ExtraSymbol: %v", err)
+	}
+	if outExtra != "" && outExtra != "no symbols found\n" {
+		t.Errorf("--no-refresh should preserve stale results exactly; ExtraSymbol should not appear, got: %q", outExtra)
+	}
 }
 
 // --- RefreshThreshold zero ---
