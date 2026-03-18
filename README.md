@@ -16,6 +16,7 @@ mimir dead ./myrepo --unexported
 - **9 CLI commands** — index, search, symbol lookup, cross-reference tracing, dead-code detection, file tree, report
 - **6 languages** — Go, JavaScript, TypeScript, TSX, Python, C#
 - **Incremental re-index** — mtime+size stat-skip; only changed files are re-parsed
+- **Auto-refresh** — query commands transparently re-index stale files; no manual `mimir index` needed between edits
 - **`--json` on every command** — pipe to `jq` or consume programmatically
 - **Single binary** — requires Go 1.26+ and a C compiler (CGO, via tree-sitter)
 - **FTS5 full-text search** — fuzzy symbol search with prefix wildcards (`proc*`)
@@ -89,6 +90,7 @@ mimir dead ./myrepo --unexported
                                type_alias | enum | namespace | variable
 --file   <str>   Filter by file path substring
 --json          Output as JSON
+--no-refresh    Skip automatic re-index before querying
 ```
 
 ### `mimir dead` flags
@@ -98,6 +100,7 @@ mimir dead ./myrepo --unexported
 --file        <str>   Filter by file path substring
 --unexported         Only show unexported symbols (reduces false positives)
 --json               Output as JSON
+--no-refresh         Skip automatic re-index before querying
 ```
 
 ### `mimir refs` flags
@@ -107,7 +110,45 @@ mimir dead ./myrepo --unexported
 --callee  <str>   Filter by callee name
 --file    <str>   Filter by caller file path
 --json           Output as JSON
+--no-refresh     Skip automatic re-index before querying
 ```
+
+### Global flags (all commands)
+
+```
+--refresh-threshold <duration>   Minimum index age before a query triggers auto re-index
+                                 (default 10s; e.g. 30s, 2m, 0s for always-refresh)
+```
+
+---
+
+## Auto-refresh
+
+Query commands (`search`, `report`, `refs`, `tree`, `callers`, `dead`, `symbol`) automatically re-index the repository when the index is older than the refresh threshold (default **10 seconds**). This means you rarely need to run `mimir index` manually between edits.
+
+```bash
+# Edit a file, then query immediately — auto-refresh picks up the change
+vim pkg/indexer/walk.go
+mimir search . --name "Run"       # re-indexes if index is > 10s old, then searches
+```
+
+**How it works**: before executing a query, mimir checks a single SQLite timestamp (`last_indexed_at` in the meta table). If the index is younger than the threshold, it proceeds directly. If stale, it runs the same incremental walk as `mimir index` (only changed files are re-parsed), then queries.
+
+**Opt out** when you want raw speed or are running many queries in a tight loop:
+
+```bash
+mimir search . --name "Foo" --no-refresh
+mimir dead   . --unexported --no-refresh
+```
+
+**Tune the threshold** globally for the entire command:
+
+```bash
+mimir --refresh-threshold=0s  search . --name "Foo"   # always re-index
+mimir --refresh-threshold=5m  search . --name "Foo"   # re-index at most once per 5 min
+```
+
+> `mimir index` itself is still useful for the very first index build or when you want an explicit, unconditional walk (e.g. in CI).
 
 ---
 
@@ -156,6 +197,7 @@ mimir report ./myrepo --json | jq '.Languages'
 3. **Parse** — tree-sitter extracts symbols and call references per file
 4. **Write** — single collector goroutine writes to SQLite (no locking errors)
 5. **Query** — cobra commands open the index read-only and return results
+6. **Auto-refresh** — before step 5, query commands check `last_indexed_at` in meta; if stale they re-run steps 1–4 transparently
 
 **DB location**: `~/.config/mimir/indexes/<repo-id>/index.db`
 (override with `$XDG_CONFIG_HOME`)

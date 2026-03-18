@@ -184,6 +184,26 @@ func OpenIndex(root string) (*sql.DB, error) {
 // GetFileMeta returns the stored hash, mtime, and size for rel, or a zero-value
 // FileMeta if the file is not in the index. Safe to call from multiple goroutines
 // concurrently.
+// GetLastIndexedAt returns the UTC time at which the index was last written by
+// Run(). If the key is absent (index has never been run, or was built by an
+// older binary), it returns a zero time.Time and nil error — callers should
+// treat a zero value as "always stale".
+func GetLastIndexedAt(db *sql.DB) (time.Time, error) {
+	var raw string
+	err := db.QueryRow(`SELECT value FROM meta WHERE key = 'last_indexed_at'`).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("GetLastIndexedAt: %w", err)
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("GetLastIndexedAt: malformed timestamp %q: %w", raw, err)
+	}
+	return t, nil
+}
+
 func GetFileMeta(db *sql.DB, rel string) (FileMeta, error) {
 	var meta FileMeta
 	err := db.QueryRow(

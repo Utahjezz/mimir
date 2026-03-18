@@ -6,13 +6,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/cobra"
 	"github.com/Utahjezz/mimir/pkg/indexer"
+	"github.com/spf13/cobra"
 )
 
 var (
-	symbolType string
-	symbolJSON bool
+	symbolType      string
+	symbolJSON      bool
+	symbolNoRefresh bool
 )
 
 var symbolsCmd = &cobra.Command{
@@ -87,6 +88,12 @@ func runSymbolFromIndex(cmd *cobra.Command, root, name string) error {
 		return fmt.Errorf("cannot open index: %w", err)
 	}
 	defer db.Close()
+
+	if !symbolNoRefresh {
+		if _, err := indexer.AutoRefresh(root, db, RefreshThreshold); err != nil {
+			return fmt.Errorf("auto-refresh: %w", err)
+		}
+	}
 
 	rows, err := indexer.SearchSymbols(db, indexer.SearchQuery{
 		Name: name,

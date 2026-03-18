@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/Utahjezz/mimir/pkg/indexer"
+	"github.com/spf13/cobra"
 )
 
 var (
-	callersJSON  bool
-	callersDepth int
+	callersJSON      bool
+	callersDepth     int
+	callersNoRefresh bool
 )
 
 var callersCmd = &cobra.Command{
@@ -42,6 +43,12 @@ func runCallers(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot open index: %w", err)
 	}
 	defer db.Close()
+
+	if !callersNoRefresh {
+		if _, err := indexer.AutoRefresh(root, db, RefreshThreshold); err != nil {
+			return fmt.Errorf("auto-refresh: %w", err)
+		}
+	}
 
 	if callersDepth == 1 {
 		// Fast path: single level, preserve original behaviour.
