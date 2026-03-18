@@ -14,6 +14,12 @@ import (
 // The check is a single SQLite point lookup with no filesystem I/O, making it
 // safe to call before every query command.
 func ShouldRefresh(db *sql.DB, threshold time.Duration) (bool, error) {
+	// negative or zero threshold means "always refresh" — this is useful
+	// for testing and can be set by users who want to disable the freshness check.
+	if threshold <= 0 {
+		threshold = 0
+	}
+
 	last, err := GetLastIndexedAt(db)
 	if err != nil {
 		return false, err
