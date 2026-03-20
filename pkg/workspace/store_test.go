@@ -126,3 +126,80 @@ func TestGetMeta_MissingKey(t *testing.T) {
 	}
 	// Otherwise ensure it is truly non-nil (already confirmed above).
 }
+
+// TestOpenWorkspace_SchemaMismatch verifies that opening an existing workspace
+// whose stored version differs from the current binary version returns a
+// SchemaMismatchError and that IsSchemaMismatch detects it correctly.
+func TestOpenWorkspace_SchemaMismatch(t *testing.T) {
+	// Arrange: create a valid workspace at the current version.
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	db, err := OpenWorkspace("mismatch")
+	if err != nil {
+		t.Fatalf("first OpenWorkspace: %v", err)
+	}
+
+	// Overwrite the stored version with a stale value.
+	_, err = db.Exec(`UPDATE meta SET value = '1' WHERE key = 'version'`)
+	if err != nil {
+		t.Fatalf("UPDATE meta version: %v", err)
+	}
+	db.Close()
+
+	// Act: re-open the same workspace — the version guard must fire.
+	_, err = OpenWorkspace("mismatch")
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected SchemaMismatchError, got nil")
+	}
+	if !IsSchemaMismatch(err) {
+		t.Errorf("expected IsSchemaMismatch(err) == true, got false; err = %v", err)
+	}
+}
+
+// TestOpenWorkspace_LinksTableExists verifies that the links and link_meta
+// tables are present after OpenWorkspace.
+func TestOpenWorkspace_LinksTableExists(t *testing.T) {
+	// Arrange
+	db := openTestWorkspace(t, "linkscheck")
+
+	// Act: insert a dummy pair of repos then a link to confirm the schema works
+	// end-to-end. We use raw SQL here because the higher-level helpers are not
+	// yet wired; the goal is purely schema validation.
+	_, err := db.Exec(`INSERT INTO repositories (id, path) VALUES ('repo-a', '/tmp/a'), ('repo-b', '/tmp/b')`)
+	if err != nil {
+		t.Fatalf("insert repos: %v", err)
+	}
+
+	_, err = db.Exec(`
+		INSERT INTO links (src_repo_id, src_symbol, dst_repo_id, dst_symbol, note)
+		VALUES ('repo-a', 'FuncA', 'repo-b', 'FuncB', 'test link')
+	`)
+	if err != nil {
+		t.Fatalf("insert link: %v", err)
+	}
+
+	var linkID int64
+	if err := db.QueryRow(`SELECT id FROM links LIMIT 1`).Scan(&linkID); err != nil {
+		t.Fatalf("query link id: %v", err)
+	}
+
+	_, err = db.Exec(`INSERT INTO link_meta (link_id, key, value) VALUES (?, 'protocol', 'grpc')`, linkID)
+	if err != nil {
+		t.Fatalf("insert link_meta: %v", err)
+	}
+
+	// Assert: verify cascade — deleting the link also removes its metadata.
+	if _, err := db.Exec(`DELETE FROM links WHERE id = ?`, linkID); err != nil {
+		t.Fatalf("delete link: %v", err)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM link_meta WHERE link_id = ?`, linkID).Scan(&count); err != nil {
+		t.Fatalf("count link_meta: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected link_meta rows to be cascade-deleted, got %d", count)
+	}
+}

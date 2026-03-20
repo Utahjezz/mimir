@@ -271,7 +271,7 @@ func TestRunWorkspaceRemove_RemovesRepo(t *testing.T) {
 // TestRunWorkspaceRemove_NotFound verifies that removing an unknown path returns
 // an error wrapping ErrRepositoryNotFound.
 func TestRunWorkspaceRemove_NotFound(t *testing.T) {
-	// Arrange
+	// Arrange: fresh temp dir with no current workspace set
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	if err := runCreateCmd(t, "notfoundws"); err != nil {
@@ -287,5 +287,510 @@ func TestRunWorkspaceRemove_NotFound(t *testing.T) {
 	}
 	if !errors.Is(err, workspace.ErrRepositoryNotFound) {
 		t.Errorf("expected ErrRepositoryNotFound, got: %v", err)
+	}
+}
+
+// --------------------------------------------------------------------------
+// Test helpers for link commands
+// --------------------------------------------------------------------------
+
+// runLinkCmd invokes runWorkspaceLink after setting flag globals. Restores all
+// flag globals via t.Cleanup so tests are hermetic.
+func runLinkCmd(t *testing.T, args []string, srcFile, dstFile, note string, meta []string) (string, error) {
+	t.Helper()
+	defer func() {
+		workspaceLinkSrcFile = ""
+		workspaceLinkDstFile = ""
+		workspaceLinkNote = ""
+		workspaceLinkMeta = nil
+	}()
+	workspaceLinkSrcFile = srcFile
+	workspaceLinkDstFile = dstFile
+	workspaceLinkNote = note
+	workspaceLinkMeta = meta
+
+	out := &bytes.Buffer{}
+	cmd := newCmd()
+	cmd.SetOut(out)
+	err := runWorkspaceLink(cmd, args)
+	return out.String(), err
+}
+
+// runLinksCmd invokes runWorkspaceLinks after setting flag globals.
+func runLinksCmd(t *testing.T, args []string, from string, asJSON bool) (string, error) {
+	t.Helper()
+	defer func() {
+		workspaceLinksFrom = ""
+		workspaceLinksJSON = false
+	}()
+	workspaceLinksFrom = from
+	workspaceLinksJSON = asJSON
+
+	out := &bytes.Buffer{}
+	cmd := newCmd()
+	cmd.SetOut(out)
+	err := runWorkspaceLinks(cmd, args)
+	return out.String(), err
+}
+
+// runUnlinkCmd invokes runWorkspaceUnlink.
+func runUnlinkCmd(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	out := &bytes.Buffer{}
+	cmd := newCmd()
+	cmd.SetOut(out)
+	err := runWorkspaceUnlink(cmd, args)
+	return out.String(), err
+}
+
+// makeAmbiguousRepo creates a temp repo with two files both exporting a symbol
+// named "Shared", so symbol resolution returns an ambiguity error.
+func makeAmbiguousRepo(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	files := map[string]string{
+		"a/a.go": "package a\nfunc Shared() {}\n",
+		"b/b.go": "package b\nfunc Shared() {}\n",
+	}
+	for rel, src := range files {
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("MkdirAll %s: %v", rel, err)
+		}
+		if err := os.WriteFile(full, []byte(src), 0o644); err != nil {
+			t.Fatalf("WriteFile %s: %v", rel, err)
+		}
+	}
+	db, err := indexer.OpenIndex(root)
+	if err != nil {
+		t.Fatalf("indexer.OpenIndex: %v", err)
+	}
+	defer db.Close()
+	if _, err := indexer.Run(root, db); err != nil {
+		t.Fatalf("indexer.Run: %v", err)
+	}
+	return root
+}
+
+// setupLinkedWorkspace creates a workspace with two indexed repos already
+// registered, and returns (workspaceName, srcPath, dstPath).
+func setupLinkedWorkspace(t *testing.T, wsName string) (src, dst string) {
+	t.Helper()
+	src = makeIndexedRepoForCmds(t)
+	dst = makeIndexedRepoForCmds(t)
+	if err := runCreateCmd(t, wsName); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if err := runAddCmd(t, src, wsName); err != nil {
+		t.Fatalf("add src repo: %v", err)
+	}
+	if err := runAddCmd(t, dst, wsName); err != nil {
+		t.Fatalf("add dst repo: %v", err)
+	}
+	return src, dst
+}
+
+// --------------------------------------------------------------------------
+// workspace link
+// --------------------------------------------------------------------------
+
+// TestRunWorkspaceLink_HappyPath verifies that a valid link is created and the
+// confirmation message contains the link ID and both symbol names.
+func TestRunWorkspaceLink_HappyPath(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "linkws")
+
+	// Act
+	out, err := runLinkCmd(t, []string{src, "F", dst, "F", "linkws"}, "", "", "a note", nil)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLink: %v", err)
+	}
+	if !strings.Contains(out, "Link #") {
+		t.Errorf("expected output to contain 'Link #', got: %q", out)
+	}
+	if !strings.Contains(out, "F") {
+		t.Errorf("expected output to contain symbol name 'F', got: %q", out)
+	}
+}
+
+// TestRunWorkspaceLink_WithMeta verifies that --meta pairs are stored and
+// visible via workspace.ListLinks.
+func TestRunWorkspaceLink_WithMeta(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "metaws")
+
+	// Act
+	_, err := runLinkCmd(t, []string{src, "F", dst, "F", "metaws"}, "", "", "", []string{"protocol=grpc", "transport=kafka"})
+
+	// Assert: link created without error
+	if err != nil {
+		t.Fatalf("runWorkspaceLink with meta: %v", err)
+	}
+
+	// Verify meta is persisted
+	db, err := workspace.OpenWorkspace("metaws")
+	if err != nil {
+		t.Fatalf("OpenWorkspace: %v", err)
+	}
+	defer db.Close()
+	links, err := workspace.ListLinks(db, "")
+	if err != nil {
+		t.Fatalf("ListLinks: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(links))
+	}
+	if links[0].Meta["protocol"] != "grpc" {
+		t.Errorf("Meta[protocol]: got %q, want %q", links[0].Meta["protocol"], "grpc")
+	}
+	if links[0].Meta["transport"] != "kafka" {
+		t.Errorf("Meta[transport]: got %q, want %q", links[0].Meta["transport"], "kafka")
+	}
+}
+
+// TestRunWorkspaceLink_SrcRepoNotInWorkspace verifies that using a repo path
+// that is not registered in the workspace returns a clear error.
+func TestRunWorkspaceLink_SrcRepoNotInWorkspace(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dst := makeIndexedRepoForCmds(t)
+	unregistered := makeIndexedRepoForCmds(t)
+	if err := runCreateCmd(t, "unregs"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := runAddCmd(t, dst, "unregs"); err != nil {
+		t.Fatalf("add dst: %v", err)
+	}
+
+	// Act: src is not registered
+	_, err := runLinkCmd(t, []string{unregistered, "F", dst, "F", "unregs"}, "", "", "", nil)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error for unregistered src repo, got nil")
+	}
+	if !strings.Contains(err.Error(), "not registered") {
+		t.Errorf("error should mention 'not registered', got: %v", err)
+	}
+}
+
+// TestRunWorkspaceLink_SymbolNotFound verifies that referencing a symbol that
+// does not exist in the src repo returns a clear error.
+func TestRunWorkspaceLink_SymbolNotFound(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "notfoundlinkws")
+
+	// Act
+	_, err := runLinkCmd(t, []string{src, "NoSuchSymbol", dst, "F", "notfoundlinkws"}, "", "", "", nil)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error for missing symbol, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention 'not found', got: %v", err)
+	}
+}
+
+// TestRunWorkspaceLink_AmbiguousSymbol verifies that when a symbol name matches
+// multiple files the error message lists the candidates and suggests --src-file.
+func TestRunWorkspaceLink_AmbiguousSymbol(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src := makeAmbiguousRepo(t)
+	dst := makeIndexedRepoForCmds(t)
+	if err := runCreateCmd(t, "ambigws"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := runAddCmd(t, src, "ambigws"); err != nil {
+		t.Fatalf("add src: %v", err)
+	}
+	if err := runAddCmd(t, dst, "ambigws"); err != nil {
+		t.Fatalf("add dst: %v", err)
+	}
+
+	// Act: "Shared" exists in both a/a.go and b/b.go
+	_, err := runLinkCmd(t, []string{src, "Shared", dst, "F", "ambigws"}, "", "", "", nil)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected ambiguity error, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "ambiguous") {
+		t.Errorf("error should mention 'ambiguous', got: %v", msg)
+	}
+	if !strings.Contains(msg, "--src-file") {
+		t.Errorf("error should suggest '--src-file', got: %v", msg)
+	}
+}
+
+// TestRunWorkspaceLink_AmbiguousSymbol_ResolvedWithSrcFile verifies that
+// providing --src-file disambiguates correctly and the link is created.
+func TestRunWorkspaceLink_AmbiguousSymbol_ResolvedWithSrcFile(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src := makeAmbiguousRepo(t)
+	dst := makeIndexedRepoForCmds(t)
+	if err := runCreateCmd(t, "disambigws"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := runAddCmd(t, src, "disambigws"); err != nil {
+		t.Fatalf("add src: %v", err)
+	}
+	if err := runAddCmd(t, dst, "disambigws"); err != nil {
+		t.Fatalf("add dst: %v", err)
+	}
+
+	// Act: disambiguate by pointing to a/a.go
+	out, err := runLinkCmd(t, []string{src, "Shared", dst, "F", "disambigws"}, "a/a.go", "", "", nil)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected link to succeed with --src-file, got: %v", err)
+	}
+	if !strings.Contains(out, "Link #") {
+		t.Errorf("expected confirmation output, got: %q", out)
+	}
+}
+
+// TestRunWorkspaceLink_InvalidMeta verifies that a malformed --meta value
+// returns a user-friendly error before any DB writes occur.
+func TestRunWorkspaceLink_InvalidMeta(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "invalidmetaws")
+
+	// Act: "protocol" has no "=" separator
+	_, err := runLinkCmd(t, []string{src, "F", dst, "F", "invalidmetaws"}, "", "", "", []string{"protocol"})
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error for invalid --meta format, got nil")
+	}
+	if !strings.Contains(err.Error(), "key=value") {
+		t.Errorf("error should mention 'key=value', got: %v", err)
+	}
+}
+
+// --------------------------------------------------------------------------
+// workspace links
+// --------------------------------------------------------------------------
+
+// TestRunWorkspaceLinks_Empty verifies that the command prints a "no links"
+// message (not an error) on a workspace with no links.
+func TestRunWorkspaceLinks_Empty(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := runCreateCmd(t, "emptylinksws"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Act
+	out, err := runLinksCmd(t, []string{"emptylinksws"}, "", false)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks on empty workspace: %v", err)
+	}
+	if !strings.Contains(out, "No links") {
+		t.Errorf("expected 'No links' message, got: %q", out)
+	}
+}
+
+// TestRunWorkspaceLinks_ListsAll verifies that all links appear in table output.
+func TestRunWorkspaceLinks_ListsAll(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "listallws")
+	if _, err := runLinkCmd(t, []string{src, "F", dst, "F", "listallws"}, "", "", "my note", nil); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+
+	// Act: list all with explicit workspace, no --from filter
+	out, err := runLinksCmd(t, []string{"listallws"}, "", false)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks: %v", err)
+	}
+	if !strings.Contains(out, "#1") {
+		t.Errorf("expected link #1 in output, got: %q", out)
+	}
+	if !strings.Contains(out, "my note") {
+		t.Errorf("expected note in output, got: %q", out)
+	}
+}
+
+// TestRunWorkspaceLinks_FilterFrom verifies that --from filters to only links
+// whose src_repo_id matches the given path.
+func TestRunWorkspaceLinks_FilterFrom(t *testing.T) {
+	// Arrange: create two links from different source repos.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	r1 := makeIndexedRepoForCmds(t)
+	r2 := makeIndexedRepoForCmds(t)
+	r3 := makeIndexedRepoForCmds(t)
+	if err := runCreateCmd(t, "filterws"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	for _, p := range []string{r1, r2, r3} {
+		if err := runAddCmd(t, p, "filterws"); err != nil {
+			t.Fatalf("add %s: %v", p, err)
+		}
+	}
+	// link r1→r2 and r3→r2
+	if _, err := runLinkCmd(t, []string{r1, "F", r2, "F", "filterws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link r1: %v", err)
+	}
+	if _, err := runLinkCmd(t, []string{r3, "F", r2, "F", "filterws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link r3: %v", err)
+	}
+
+	r1ID := indexer.RepoID(r1)
+	r3ID := indexer.RepoID(r3)
+
+	// Act: filter to r1 only
+	out, err := runLinksCmd(t, []string{"filterws"}, r1, false)
+
+	// Assert: only r1's link appears
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks --from r1: %v", err)
+	}
+	if !strings.Contains(out, r1ID) {
+		t.Errorf("expected r1 repoID %q in output, got: %q", r1ID, out)
+	}
+	if strings.Contains(out, r3ID) {
+		t.Errorf("r3 repoID %q should not appear when filtering by r1, got: %q", r3ID, out)
+	}
+}
+
+// TestRunWorkspaceLinks_FromNotInWorkspace verifies that when --from points to
+// a path not registered in the workspace, all links are listed (silent fallback).
+func TestRunWorkspaceLinks_FromNotInWorkspace(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "fallbackws")
+	if _, err := runLinkCmd(t, []string{src, "F", dst, "F", "fallbackws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+
+	// Act: --from points to a path not in the workspace
+	out, err := runLinksCmd(t, []string{"fallbackws"}, "/not/a/registered/repo", false)
+
+	// Assert: no error, all links still shown
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks unregistered --from: %v", err)
+	}
+	if !strings.Contains(out, "#1") {
+		t.Errorf("expected all links listed as fallback, got: %q", out)
+	}
+}
+
+// TestRunWorkspaceLinks_JSON verifies that --json emits a valid JSON array
+// containing the link's fields.
+func TestRunWorkspaceLinks_JSON(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "jsonlinksws")
+	if _, err := runLinkCmd(t, []string{src, "F", dst, "F", "jsonlinksws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+
+	// Act
+	out, err := runLinksCmd(t, []string{"jsonlinksws"}, "", true)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks --json: %v", err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(out), "[") {
+		t.Errorf("expected JSON array output, got: %q", out)
+	}
+	if !strings.Contains(out, `"src_symbol"`) {
+		t.Errorf("expected 'src_symbol' key in JSON, got: %q", out)
+	}
+}
+
+// --------------------------------------------------------------------------
+// workspace unlink
+// --------------------------------------------------------------------------
+
+// TestRunWorkspaceUnlink_HappyPath verifies that unlink removes an existing
+// link and prints the confirmation message.
+func TestRunWorkspaceUnlink_HappyPath(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "unlinkws")
+	if _, err := runLinkCmd(t, []string{src, "F", dst, "F", "unlinkws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+
+	// Act
+	out, err := runUnlinkCmd(t, "1", "unlinkws")
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceUnlink: %v", err)
+	}
+	if !strings.Contains(out, "Link #1 removed") {
+		t.Errorf("expected 'Link #1 removed', got: %q", out)
+	}
+
+	// Verify the link is gone
+	db, err := workspace.OpenWorkspace("unlinkws")
+	if err != nil {
+		t.Fatalf("OpenWorkspace: %v", err)
+	}
+	defer db.Close()
+	links, _ := workspace.ListLinks(db, "")
+	if len(links) != 0 {
+		t.Errorf("expected 0 links after unlink, got %d", len(links))
+	}
+}
+
+// TestRunWorkspaceUnlink_NotFound verifies that unlinking a non-existent ID
+// returns an error mentioning the ID.
+func TestRunWorkspaceUnlink_NotFound(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := runCreateCmd(t, "unlinknotfoundws"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Act
+	_, err := runUnlinkCmd(t, "999", "unlinknotfoundws")
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error for non-existent link ID, got nil")
+	}
+	if !strings.Contains(err.Error(), "999") {
+		t.Errorf("error should mention ID 999, got: %v", err)
+	}
+}
+
+// TestRunWorkspaceUnlink_InvalidID verifies that a non-numeric ID argument
+// returns a user-friendly error before any DB access.
+func TestRunWorkspaceUnlink_InvalidID(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := runCreateCmd(t, "invalididws"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Act
+	_, err := runUnlinkCmd(t, "not-a-number", "invalididws")
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error for non-numeric ID, got nil")
+	}
+	if !strings.Contains(err.Error(), "numeric") {
+		t.Errorf("error should mention 'numeric', got: %v", err)
 	}
 }

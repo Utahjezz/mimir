@@ -13,7 +13,7 @@ mimir dead ./myrepo --unexported
 
 ## Features
 
-- **9 CLI commands + workspace sub-commands** — index, search, symbol lookup, cross-reference tracing, dead-code detection, file tree, report; plus `workspace` to manage named collections of repos
+- **9 CLI commands + workspace sub-commands** — index, search, symbol lookup, cross-reference tracing, dead-code detection, file tree, report; plus `workspace` to manage named collections of repos and declare cross-repo symbol links
 - **6 languages** — Go, JavaScript, TypeScript, TSX, Python, C#
 - **Incremental re-index** — mtime+size stat-skip; only changed files are re-parsed
 - **Auto-refresh** — query commands transparently re-index stale files; no manual `mimir index` needed between edits
@@ -152,6 +152,9 @@ mimir workspace show
 | `workspace remove` | `mimir workspace remove <path> [workspace]` | Remove a repository from a workspace |
 | `workspace show` | `mimir workspace show [workspace]` | List repositories in a workspace |
 | `workspace index` | `mimir workspace index [workspace] [flags]` | Index all repos in a workspace |
+| `workspace link` | `mimir workspace link <src-repo> <src-symbol> <dst-repo> <dst-symbol> [workspace]` | Declare a cross-repo symbol link |
+| `workspace links` | `mimir workspace links [--from <repo>] [workspace]` | List cross-repo symbol links |
+| `workspace unlink` | `mimir workspace unlink <id> [workspace]` | Remove a cross-repo symbol link by ID |
 
 ### `mimir workspace index` flags
 
@@ -159,6 +162,22 @@ mimir workspace show
 --rebuild        Drop and rebuild each repo's index from scratch
 --concurrency N  Number of repos to index in parallel (default 2)
 --json           Output results as JSON (one object per repo)
+```
+
+### `mimir workspace link` flags
+
+```
+--src-file <path>   Disambiguate src-symbol when multiple files match
+--dst-file <path>   Disambiguate dst-symbol when multiple files match
+--note     <text>   Free-text note stored with the link
+--meta     <k=v>    Key/value metadata (repeatable: --meta protocol=grpc --meta transport=kafka)
+```
+
+### `mimir workspace links` flags
+
+```
+--from  <path>   Filter links by source repo path (defaults to cwd; lists all if cwd not in workspace)
+--json           Output as JSON
 ```
 
 ### `mimir workspace show --json`
@@ -169,6 +188,53 @@ mimir workspace show --json | jq '.[].ID'
 
 **DB location**: each workspace is stored at `~/.config/mimir/workspaces/<name>.db`
 The active workspace name is stored in `~/.config/mimir/config.json`.
+
+---
+
+## Cross-repo Symbol Links
+
+A cross-repo link is a manually declared mapping from a symbol in one repository to a symbol in another. Both sides are validated against their repo indexes when the link is created.
+
+**Common uses**: documenting gRPC/HTTP boundaries (client call → server handler), marking shared interfaces implemented across repos, or capturing any meaningful cross-codebase relationship.
+
+```bash
+# Declare that OrderService.PlaceOrder in the backend calls PaymentClient.Charge in payments
+mimir workspace link ~/code/backend OrderService.PlaceOrder ~/code/payments PaymentClient.Charge
+
+# Attach metadata and a note
+mimir workspace link ~/code/backend OrderService.PlaceOrder ~/code/payments PaymentClient.Charge \
+  --meta protocol=grpc --meta transport=kafka \
+  --note "async via Kafka topic orders.placed"
+
+# If a symbol name is ambiguous, use --src-file or --dst-file to disambiguate
+mimir workspace link ~/code/backend Shared ~/code/payments Shared \
+  --src-file pkg/orders/handler.go \
+  --dst-file pkg/payments/client.go
+
+# List all links in the active workspace (filters to cwd repo by default)
+mimir workspace links
+
+# List links from a specific repo
+mimir workspace links --from ~/code/backend
+
+# List all links across the workspace
+mimir workspace links --from ""
+
+# JSON output for scripting
+mimir workspace links --json | jq '.[].SrcSymbol'
+
+# Remove a link by ID
+mimir workspace unlink 3
+```
+
+**Link output format:**
+```
+#1    OrderService.PlaceOrder (abc123)
+      → PaymentClient.Charge (def456)
+      note: async via Kafka topic orders.placed
+      protocol=grpc
+      transport=kafka
+```
 
 ---
 
@@ -290,7 +356,7 @@ go build -o mimir ./cmd/mimir
 ```
 cmd/mimir/              ← entry point
 internal/commands/      ← one file per subcommand
-  workspace/            ← workspace subcommands (create, use, add, show, remove, index)
+  workspace/            ← workspace subcommands (create, use, add, show, remove, index, link, links, unlink)
 pkg/indexer/            ← core: walker, parser, store, queries, facade
   languages/            ← per-language tree-sitter grammars + queries
 pkg/workspace/          ← workspace library: store, config, repository, index

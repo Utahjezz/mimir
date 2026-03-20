@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 const schema = `
+PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -18,6 +22,25 @@ CREATE TABLE IF NOT EXISTS repositories (
 	path TEXT NOT NULL,
 	added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	last_indexed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS links (
+    id          INTEGER PRIMARY KEY,
+    src_repo_id TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    src_symbol  TEXT NOT NULL,
+    src_file    TEXT NOT NULL DEFAULT '',
+    dst_repo_id TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+    dst_symbol  TEXT NOT NULL,
+    dst_file    TEXT NOT NULL DEFAULT '',
+    note        TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS link_meta (
+    link_id INTEGER NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+    key     TEXT    NOT NULL,
+    value   TEXT    NOT NULL,
+    PRIMARY KEY (link_id, key)
 );
 `
 
@@ -42,6 +65,27 @@ func OpenWorkspace(name string) (*sql.DB, error) {
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("cannot bootstrap meta table: %w", err)
+	}
+
+	// Check stored schema version before applying any DDL.
+	// If the workspace was created with a different version, refuse to open it
+	// so the caller can surface a clear "recreate the workspace" message.
+	var storedVersionStr string
+	err = db.QueryRow(`SELECT value FROM meta WHERE key = 'version'`).Scan(&storedVersionStr)
+	if err != nil && err != sql.ErrNoRows {
+		db.Close()
+		return nil, fmt.Errorf("cannot read meta version: %w", err)
+	}
+	if storedVersionStr != "" {
+		stored, convErr := strconv.Atoi(storedVersionStr)
+		if convErr != nil {
+			db.Close()
+			return nil, fmt.Errorf("cannot parse meta version %q: %w", storedVersionStr, convErr)
+		}
+		if stored != workspaceVersion {
+			db.Close()
+			return nil, &SchemaMismatchError{Stored: stored, Current: workspaceVersion}
+		}
 	}
 
 	if _, err := db.Exec(schema); err != nil {
