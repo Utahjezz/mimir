@@ -13,7 +13,7 @@ mimir dead ./myrepo --unexported
 
 ## Features
 
-- **9 CLI commands** — index, search, symbol lookup, cross-reference tracing, dead-code detection, file tree, report
+- **9 CLI commands + workspace sub-commands** — index, search, symbol lookup, cross-reference tracing, dead-code detection, file tree, report; plus `workspace` to manage named collections of repos
 - **6 languages** — Go, JavaScript, TypeScript, TSX, Python, C#
 - **Incremental re-index** — mtime+size stat-skip; only changed files are re-parsed
 - **Auto-refresh** — query commands transparently re-index stale files; no manual `mimir index` needed between edits
@@ -119,6 +119,56 @@ mimir dead ./myrepo --unexported
 --refresh-threshold <duration>   Minimum index age before a query triggers auto re-index
                                  (default 10s; e.g. 30s, 2m, 0s for always-refresh)
 ```
+
+---
+
+## Workspaces
+
+A workspace is a named collection of repositories. Create one workspace per project or team, add multiple repos to it, and index them all with a single command.
+
+```bash
+# Create a workspace and set it as active
+mimir workspace create myproject
+mimir workspace use myproject
+
+# Add repositories
+mimir workspace add ~/code/backend
+mimir workspace add ~/code/frontend
+
+# Index all repos in the active workspace (2 concurrent by default)
+mimir workspace index
+
+# Show what's in the workspace
+mimir workspace show
+```
+
+### Workspace commands
+
+| Command | Syntax | Description |
+|---------|--------|-------------|
+| `workspace create` | `mimir workspace create <name>` | Create a new workspace |
+| `workspace use` | `mimir workspace use <name>` | Set the active workspace |
+| `workspace add` | `mimir workspace add <path> [workspace]` | Add a repository to a workspace |
+| `workspace remove` | `mimir workspace remove <path> [workspace]` | Remove a repository from a workspace |
+| `workspace show` | `mimir workspace show [workspace]` | List repositories in a workspace |
+| `workspace index` | `mimir workspace index [workspace] [flags]` | Index all repos in a workspace |
+
+### `mimir workspace index` flags
+
+```
+--rebuild        Drop and rebuild each repo's index from scratch
+--concurrency N  Number of repos to index in parallel (default 2)
+--json           Output results as JSON (one object per repo)
+```
+
+### `mimir workspace show --json`
+
+```bash
+mimir workspace show --json | jq '.[].ID'
+```
+
+**DB location**: each workspace is stored at `~/.config/mimir/workspaces/<name>.db`
+The active workspace name is stored in `~/.config/mimir/config.json`.
 
 ---
 
@@ -238,10 +288,12 @@ go build -o mimir ./cmd/mimir
 ## Project Structure
 
 ```
-cmd/mimir/          ← entry point
-internal/commands/  ← one file per subcommand
-pkg/indexer/        ← core: walker, parser, store, queries, facade
-  languages/        ← per-language tree-sitter grammars + queries
+cmd/mimir/              ← entry point
+internal/commands/      ← one file per subcommand
+  workspace/            ← workspace subcommands (create, use, add, show, remove, index)
+pkg/indexer/            ← core: walker, parser, store, queries, facade
+  languages/            ← per-language tree-sitter grammars + queries
+pkg/workspace/          ← workspace library: store, config, repository, index
 ```
 
 ---

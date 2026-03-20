@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/Utahjezz/mimir/pkg/indexer"
 )
@@ -12,7 +13,12 @@ import (
 var ErrRepositoryNotFound = errors.New("repository not found in workspace")
 
 func AddRepository(db *sql.DB, path string) (string, error) {
-	repoDB, err := indexer.OpenIndex(path)
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve path: %w", err)
+	}
+
+	repoDB, err := indexer.OpenIndex(absPath)
 	if err != nil {
 		return "", err
 	}
@@ -23,14 +29,17 @@ func AddRepository(db *sql.DB, path string) (string, error) {
 		return "", err
 	}
 
-	repoID := indexer.RepoID(path)
+	repoID := indexer.RepoID(absPath)
 
-	_, err = db.Exec(`INSERT OR IGNORE INTO repositories (id,last_indexed_at) VALUES (?, ?)`, repoID, last_indexed_at)
+	_, err = db.Exec(
+		`INSERT OR IGNORE INTO repositories (id, path, last_indexed_at) VALUES (?, ?, ?)`,
+		repoID, absPath, last_indexed_at,
+	)
 	return repoID, err
 }
 
 func ListRepositories(db *sql.DB) ([]Repository, error) {
-	rows, err := db.Query(`SELECT id, added_at, last_indexed_at FROM repositories`)
+	rows, err := db.Query(`SELECT id, path, added_at, last_indexed_at FROM repositories`)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +48,7 @@ func ListRepositories(db *sql.DB) ([]Repository, error) {
 	var repos []Repository
 	for rows.Next() {
 		var repo Repository
-		if err := rows.Scan(&repo.ID, &repo.AddedAt, &repo.LastIndexed); err != nil {
+		if err := rows.Scan(&repo.ID, &repo.Path, &repo.AddedAt, &repo.LastIndexed); err != nil {
 			return nil, err
 		}
 		repos = append(repos, repo)
