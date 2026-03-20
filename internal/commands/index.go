@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/Utahjezz/mimir/pkg/indexer"
+	"github.com/spf13/cobra"
 )
 
 var jsonOutput bool

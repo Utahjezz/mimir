@@ -3,6 +3,7 @@ package commands
 import (
 	"time"
 
+	workspaceCmd "github.com/Utahjezz/mimir/internal/commands/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -76,4 +77,7 @@ func Register(root *cobra.Command) {
 	deadCmd.Flags().BoolVar(&deadJSON, "json", false, "Output results as JSON")
 	deadCmd.Flags().BoolVar(&deadNoRefresh, "no-refresh", false, "Skip automatic re-index before querying")
 	root.AddCommand(deadCmd)
+
+	// workspace
+	root.AddCommand(workspaceCmd.WorkspaceCmd)
 }
