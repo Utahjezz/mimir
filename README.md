@@ -129,6 +129,7 @@ A workspace is a named collection of repositories. Create one workspace per proj
 ```bash
 # Create a workspace and set it as active
 mimir workspace create myproject
+# Next, set it as current: mimir workspace use myproject
 mimir workspace use myproject
 
 # Add repositories
@@ -152,8 +153,8 @@ mimir workspace show
 | `workspace remove` | `mimir workspace remove <path> [workspace]` | Remove a repository from a workspace |
 | `workspace show` | `mimir workspace show [workspace]` | List repositories in a workspace |
 | `workspace index` | `mimir workspace index [workspace] [flags]` | Index all repos in a workspace |
-| `workspace link` | `mimir workspace link <src-repo> <src-symbol> <dst-repo> <dst-symbol> [workspace]` | Declare a cross-repo symbol link |
-| `workspace links` | `mimir workspace links [--from <repo>] [workspace]` | List cross-repo symbol links |
+| `workspace link` | `mimir workspace link <src-repo-id> <src-symbol> <dst-repo-id> <dst-symbol> [workspace]` | Declare a cross-repo symbol link |
+| `workspace links` | `mimir workspace links [--from <repo>] [--src-symbol <name>] [--dst-symbol <name>] [workspace]` | List cross-repo symbol links |
 | `workspace unlink` | `mimir workspace unlink <id> [workspace]` | Remove a cross-repo symbol link by ID |
 
 ### `mimir workspace index` flags
@@ -176,8 +177,10 @@ mimir workspace show
 ### `mimir workspace links` flags
 
 ```
---from  <path>   Filter links by source repo path (defaults to cwd; lists all if cwd not in workspace)
---json           Output as JSON
+--from       <repo-id>   Filter links by source repo ID (defaults to cwd repo; lists all if cwd not in workspace)
+--src-symbol <name>      Filter links by source symbol name (exact match)
+--dst-symbol <name>      Filter links by destination symbol name (exact match)
+--json                   Output as JSON
 ```
 
 ### `mimir workspace show --json`
@@ -198,27 +201,39 @@ A cross-repo link is a manually declared mapping from a symbol in one repository
 **Common uses**: documenting gRPC/HTTP boundaries (client call → server handler), marking shared interfaces implemented across repos, or capturing any meaningful cross-codebase relationship.
 
 ```bash
+# First, find your repo IDs
+mimir workspace show
+
 # Declare that OrderService.PlaceOrder in the backend calls PaymentClient.Charge in payments
-mimir workspace link ~/code/backend OrderService.PlaceOrder ~/code/payments PaymentClient.Charge
+mimir workspace link backend-a1b2c3d4 OrderService.PlaceOrder payments-def45678 PaymentClient.Charge
 
 # Attach metadata and a note
-mimir workspace link ~/code/backend OrderService.PlaceOrder ~/code/payments PaymentClient.Charge \
+mimir workspace link backend-a1b2c3d4 OrderService.PlaceOrder payments-def45678 PaymentClient.Charge \
   --meta protocol=grpc --meta transport=kafka \
   --note "async via Kafka topic orders.placed"
 
 # If a symbol name is ambiguous, use --src-file or --dst-file to disambiguate
-mimir workspace link ~/code/backend Shared ~/code/payments Shared \
+mimir workspace link backend-a1b2c3d4 Shared payments-def45678 Shared \
   --src-file pkg/orders/handler.go \
   --dst-file pkg/payments/client.go
 
 # List all links in the active workspace (filters to cwd repo by default)
 mimir workspace links
 
-# List links from a specific repo
-mimir workspace links --from ~/code/backend
+# List links from a specific repo (by repo ID)
+mimir workspace links --from backend-a1b2c3d4
 
 # List all links across the workspace
 mimir workspace links --from ""
+
+# Filter by source symbol name
+mimir workspace links --src-symbol OrderService.PlaceOrder
+
+# Filter by destination symbol name
+mimir workspace links --dst-symbol PaymentClient.Charge
+
+# Combine filters: links from a specific repo that target a specific symbol
+mimir workspace links --from backend-a1b2c3d4 --dst-symbol PaymentClient.Charge
 
 # JSON output for scripting
 mimir workspace links --json | jq '.[].SrcSymbol'

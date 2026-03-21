@@ -319,12 +319,22 @@ func runLinkCmd(t *testing.T, args []string, srcFile, dstFile, note string, meta
 // runLinksCmd invokes runWorkspaceLinks after setting flag globals.
 func runLinksCmd(t *testing.T, args []string, from string, asJSON bool) (string, error) {
 	t.Helper()
+	return runLinksCmdFull(t, args, from, "", "", asJSON)
+}
+
+// runLinksCmdFull is the full helper that exposes --src-symbol and --dst-symbol.
+func runLinksCmdFull(t *testing.T, args []string, from, srcSymbol, dstSymbol string, asJSON bool) (string, error) {
+	t.Helper()
 	defer func() {
 		workspaceLinksFrom = ""
 		workspaceLinksJSON = false
+		workspaceLinksSrcSymbol = ""
+		workspaceLinksDstSymbol = ""
 	}()
 	workspaceLinksFrom = from
 	workspaceLinksJSON = asJSON
+	workspaceLinksSrcSymbol = srcSymbol
+	workspaceLinksDstSymbol = dstSymbol
 
 	out := &bytes.Buffer{}
 	cmd := newCmd()
@@ -373,11 +383,11 @@ func makeAmbiguousRepo(t *testing.T) string {
 }
 
 // setupLinkedWorkspace creates a workspace with two indexed repos already
-// registered, and returns (workspaceName, srcPath, dstPath).
-func setupLinkedWorkspace(t *testing.T, wsName string) (src, dst string) {
+// registered, and returns (workspaceName, srcRepoID, dstRepoID).
+func setupLinkedWorkspace(t *testing.T, wsName string) (srcID, dstID string) {
 	t.Helper()
-	src = makeIndexedRepoForCmds(t)
-	dst = makeIndexedRepoForCmds(t)
+	src := makeIndexedRepoForCmds(t)
+	dst := makeIndexedRepoForCmds(t)
 	if err := runCreateCmd(t, wsName); err != nil {
 		t.Fatalf("create workspace: %v", err)
 	}
@@ -387,7 +397,7 @@ func setupLinkedWorkspace(t *testing.T, wsName string) (src, dst string) {
 	if err := runAddCmd(t, dst, wsName); err != nil {
 		t.Fatalf("add dst repo: %v", err)
 	}
-	return src, dst
+	return indexer.RepoID(src), indexer.RepoID(dst)
 }
 
 // --------------------------------------------------------------------------
@@ -437,7 +447,7 @@ func TestRunWorkspaceLink_WithMeta(t *testing.T) {
 		t.Fatalf("OpenWorkspace: %v", err)
 	}
 	defer db.Close()
-	links, err := workspace.ListLinks(db, "", "")
+	links, err := workspace.ListLinks(db, workspace.LinkQuery{})
 	if err != nil {
 		t.Fatalf("ListLinks: %v", err)
 	}
@@ -452,7 +462,7 @@ func TestRunWorkspaceLink_WithMeta(t *testing.T) {
 	}
 }
 
-// TestRunWorkspaceLink_SrcRepoNotInWorkspace verifies that using a repo path
+// TestRunWorkspaceLink_SrcRepoNotInWorkspace verifies that using a repo ID
 // that is not registered in the workspace returns a clear error.
 func TestRunWorkspaceLink_SrcRepoNotInWorkspace(t *testing.T) {
 	// Arrange
@@ -466,8 +476,11 @@ func TestRunWorkspaceLink_SrcRepoNotInWorkspace(t *testing.T) {
 		t.Fatalf("add dst: %v", err)
 	}
 
+	dstID := indexer.RepoID(dst)
+	unregisteredID := indexer.RepoID(unregistered)
+
 	// Act: src is not registered
-	_, err := runLinkCmd(t, []string{unregistered, "F", dst, "F", "unregs"}, "", "", "", nil)
+	_, err := runLinkCmd(t, []string{unregisteredID, "F", dstID, "F", "unregs"}, "", "", "", nil)
 
 	// Assert
 	if err == nil {
@@ -514,8 +527,11 @@ func TestRunWorkspaceLink_AmbiguousSymbol(t *testing.T) {
 		t.Fatalf("add dst: %v", err)
 	}
 
+	srcID := indexer.RepoID(src)
+	dstID := indexer.RepoID(dst)
+
 	// Act: "Shared" exists in both a/a.go and b/b.go
-	_, err := runLinkCmd(t, []string{src, "Shared", dst, "F", "ambigws"}, "", "", "", nil)
+	_, err := runLinkCmd(t, []string{srcID, "Shared", dstID, "F", "ambigws"}, "", "", "", nil)
 
 	// Assert
 	if err == nil {
@@ -547,8 +563,11 @@ func TestRunWorkspaceLink_AmbiguousSymbol_ResolvedWithSrcFile(t *testing.T) {
 		t.Fatalf("add dst: %v", err)
 	}
 
+	srcID := indexer.RepoID(src)
+	dstID := indexer.RepoID(dst)
+
 	// Act: disambiguate by pointing to a/a.go
-	out, err := runLinkCmd(t, []string{src, "Shared", dst, "F", "disambigws"}, "a/a.go", "", "", nil)
+	out, err := runLinkCmd(t, []string{srcID, "Shared", dstID, "F", "disambigws"}, "a/a.go", "", "", nil)
 
 	// Assert
 	if err != nil {
@@ -644,10 +663,10 @@ func TestRunWorkspaceLinks_FilterFrom(t *testing.T) {
 		}
 	}
 	// link r1→r2 and r3→r2
-	if _, err := runLinkCmd(t, []string{r1, "F", r2, "F", "filterws"}, "", "", "", nil); err != nil {
+	if _, err := runLinkCmd(t, []string{indexer.RepoID(r1), "F", indexer.RepoID(r2), "F", "filterws"}, "", "", "", nil); err != nil {
 		t.Fatalf("link r1: %v", err)
 	}
-	if _, err := runLinkCmd(t, []string{r3, "F", r2, "F", "filterws"}, "", "", "", nil); err != nil {
+	if _, err := runLinkCmd(t, []string{indexer.RepoID(r3), "F", indexer.RepoID(r2), "F", "filterws"}, "", "", "", nil); err != nil {
 		t.Fatalf("link r3: %v", err)
 	}
 
@@ -716,6 +735,72 @@ func TestRunWorkspaceLinks_JSON(t *testing.T) {
 	}
 }
 
+// TestRunWorkspaceLinks_FilterSrcSymbol verifies that --src-symbol shows only
+// links whose src_symbol matches the given name.
+func TestRunWorkspaceLinks_FilterSrcSymbol(t *testing.T) {
+	// Arrange: workspace with two links that differ by src symbol.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "srcsymws")
+	if _, err := runLinkCmd(t, []string{src, "F", dst, "F", "srcsymws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link F: %v", err)
+	}
+
+	// Act: filter by src symbol "F" — must find it
+	out, err := runLinksCmdFull(t, []string{"srcsymws"}, "", "F", "", false)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks --src-symbol: %v", err)
+	}
+	if !strings.Contains(out, "#1") {
+		t.Errorf("expected link in output when src-symbol matches, got: %q", out)
+	}
+}
+
+// TestRunWorkspaceLinks_FilterSrcSymbol_NoMatch verifies that --src-symbol with
+// a name that matches no link prints "No links found."
+func TestRunWorkspaceLinks_FilterSrcSymbol_NoMatch(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "srcsymnomatch")
+	if _, err := runLinkCmd(t, []string{src, "F", dst, "F", "srcsymnomatch"}, "", "", "", nil); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+
+	// Act
+	out, err := runLinksCmdFull(t, []string{"srcsymnomatch"}, "", "DoesNotExist", "", false)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks --src-symbol no match: %v", err)
+	}
+	if !strings.Contains(out, "No links") {
+		t.Errorf("expected 'No links' message, got: %q", out)
+	}
+}
+
+// TestRunWorkspaceLinks_FilterDstSymbol verifies that --dst-symbol shows only
+// links whose dst_symbol matches the given name.
+func TestRunWorkspaceLinks_FilterDstSymbol(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "dstsymws")
+	if _, err := runLinkCmd(t, []string{src, "F", dst, "F", "dstsymws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link F: %v", err)
+	}
+
+	// Act
+	out, err := runLinksCmdFull(t, []string{"dstsymws"}, "", "", "F", false)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks --dst-symbol: %v", err)
+	}
+	if !strings.Contains(out, "#1") {
+		t.Errorf("expected link in output when dst-symbol matches, got: %q", out)
+	}
+}
+
 // --------------------------------------------------------------------------
 // workspace unlink
 // --------------------------------------------------------------------------
@@ -747,7 +832,7 @@ func TestRunWorkspaceUnlink_HappyPath(t *testing.T) {
 		t.Fatalf("OpenWorkspace: %v", err)
 	}
 	defer db.Close()
-	links, _ := workspace.ListLinks(db, "", "")
+	links, _ := workspace.ListLinks(db, workspace.LinkQuery{})
 	if len(links) != 0 {
 		t.Errorf("expected 0 links after unlink, got %d", len(links))
 	}

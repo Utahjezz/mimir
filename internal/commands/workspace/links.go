@@ -11,16 +11,22 @@ import (
 )
 
 var (
-	workspaceLinksFrom string
-	workspaceLinksJSON bool
+	workspaceLinksFrom      string
+	workspaceLinksJSON      bool
+	workspaceLinksSrcSymbol string
+	workspaceLinksDstSymbol string
 )
 
 var workspaceLinksCmd = &cobra.Command{
 	Use:   "links [workspace]",
 	Short: "List cross-repo symbol links in a workspace",
 	Long: `List all cross-repo symbol links in a workspace.
+
 Use --from to filter by source repository (defaults to the current directory).
-If the current directory is not registered in the workspace, all links are listed.`,
+If the current directory is not registered in the workspace, all links are listed.
+
+Use --src-symbol to filter by the source symbol name (exact match).
+Use --dst-symbol to filter by the destination symbol name (exact match).`,
 	Args: cobra.RangeArgs(0, 1),
 	RunE: runWorkspaceLinks,
 }
@@ -60,7 +66,11 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 		// If fromPath is not in the workspace, srcFilter stays "" → list all.
 	}
 
-	links, err := workspace.ListLinks(db, srcFilter, "")
+	links, err := workspace.ListLinks(db, workspace.LinkQuery{
+		SrcRepoID: srcFilter,
+		SrcSymbol: workspaceLinksSrcSymbol,
+		DstSymbol: workspaceLinksDstSymbol,
+	})
 	if err != nil {
 		return err
 	}

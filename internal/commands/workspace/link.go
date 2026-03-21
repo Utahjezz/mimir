@@ -18,9 +18,13 @@ var (
 )
 
 var workspaceLinkCmd = &cobra.Command{
-	Use:   "link <src-repo> <src-symbol> <dst-repo> <dst-symbol> [workspace]",
+	Use:   "link <src-repo-id> <src-symbol> <dst-repo-id> <dst-symbol> [workspace]",
 	Short: "Declare a cross-repo symbol link",
 	Long: `Declare a link from a symbol in one repository to a symbol in another.
+
+Both <src-repo-id> and <dst-repo-id> are the repo IDs shown by
+"mimir workspace add" and "mimir workspace show" (e.g. backend-a1b2c3d4).
+
 Both symbols are validated against their repo indexes. If a symbol name is
 ambiguous (multiple matches), the command lists all candidates and asks you to
 re-run with --src-file or --dst-file to disambiguate.`,
@@ -29,9 +33,9 @@ re-run with --src-file or --dst-file to disambiguate.`,
 }
 
 func runWorkspaceLink(cmd *cobra.Command, args []string) error {
-	srcRepoPath := args[0]
+	srcRepoID := args[0]
 	srcSymbolName := args[1]
-	dstRepoPath := args[2]
+	dstRepoID := args[2]
 	dstSymbolName := args[3]
 
 	workspaceName, err := resolveWorkspaceName(args, 4)
@@ -45,12 +49,12 @@ func runWorkspaceLink(cmd *cobra.Command, args []string) error {
 	}
 	defer db.Close()
 
-	// Resolve src and dst repo IDs from their paths.
-	srcRepoID, err := repoIDFromPath(db, srcRepoPath)
+	// Resolve paths from repo IDs so we can open their indexes.
+	srcRepoPath, err := repoPathFromID(db, srcRepoID)
 	if err != nil {
 		return fmt.Errorf("src-repo: %w", err)
 	}
-	dstRepoID, err := repoIDFromPath(db, dstRepoPath)
+	dstRepoPath, err := repoPathFromID(db, dstRepoID)
 	if err != nil {
 		return fmt.Errorf("dst-repo: %w", err)
 	}
@@ -90,20 +94,19 @@ func runWorkspaceLink(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// repoIDFromPath looks up repoPath in the workspace repositories table and
-// returns its ID. Returns an error if the repo is not registered.
-func repoIDFromPath(db *sql.DB, repoPath string) (string, error) {
+// repoPathFromID looks up repoID in the workspace repositories table and
+// returns its stored filesystem path. Returns an error if the repo is not registered.
+func repoPathFromID(db *sql.DB, repoID string) (string, error) {
 	repos, err := workspace.ListRepositories(db)
 	if err != nil {
 		return "", fmt.Errorf("cannot list repositories: %w", err)
 	}
-	repoID := indexer.RepoID(repoPath)
 	for _, r := range repos {
 		if r.ID == repoID {
-			return r.ID, nil
+			return r.Path, nil
 		}
 	}
-	return "", fmt.Errorf("repository %q is not registered in this workspace; run `mimir workspace add %s` first", repoPath, repoPath)
+	return "", fmt.Errorf("repository %q is not registered in this workspace; run `mimir workspace add <path>` first", repoID)
 }
 
 // resolveSymbol opens the repo index at repoPath, searches for symbolName,

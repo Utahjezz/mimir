@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // ErrLinkNotFound is returned by DeleteLink when no link with the given ID exists.
@@ -40,26 +41,45 @@ func SetLinkMeta(db *sql.DB, linkID int64, key, value string) error {
 	return nil
 }
 
-// ListLinks returns all links in the workspace. srcRepoID and dstRepoID are
-// optional filters (empty string = no filter); both may be set simultaneously.
+// LinkQuery holds optional filters for ListLinks.
+// Empty string fields are ignored (no filter applied).
+type LinkQuery struct {
+	SrcRepoID string // filter by source repo ID
+	DstRepoID string // filter by destination repo ID
+	SrcSymbol string // filter by source symbol name (exact match)
+	DstSymbol string // filter by destination symbol name (exact match)
+}
+
+// ListLinks returns all links in the workspace matching the given query.
+// All fields in the query are optional; empty string means no filter.
 // Results are ordered by created_at.
 // Each Link's Meta map is populated from the link_meta table.
-func ListLinks(db *sql.DB, srcRepoID, dstRepoID string) ([]Link, error) {
+func ListLinks(db *sql.DB, q LinkQuery) ([]Link, error) {
 	query := `SELECT id, src_repo_id, src_symbol, src_file,
 	                 dst_repo_id, dst_symbol, dst_file, note, created_at
 	          FROM links`
 	args := []any{}
-	if srcRepoID != "" {
-		query += ` WHERE src_repo_id = ?`
-		args = append(args, srcRepoID)
+	clauses := []string{}
+
+	if q.SrcRepoID != "" {
+		clauses = append(clauses, "src_repo_id = ?")
+		args = append(args, q.SrcRepoID)
 	}
-	if dstRepoID != "" {
-		if srcRepoID != "" {
-			query += ` AND dst_repo_id = ?`
-		} else {
-			query += ` WHERE dst_repo_id = ?`
-		}
-		args = append(args, dstRepoID)
+	if q.DstRepoID != "" {
+		clauses = append(clauses, "dst_repo_id = ?")
+		args = append(args, q.DstRepoID)
+	}
+	if q.SrcSymbol != "" {
+		clauses = append(clauses, "src_symbol = ?")
+		args = append(args, q.SrcSymbol)
+	}
+	if q.DstSymbol != "" {
+		clauses = append(clauses, "dst_symbol = ?")
+		args = append(args, q.DstSymbol)
+	}
+
+	if len(clauses) > 0 {
+		query += " WHERE " + strings.Join(clauses, " AND ")
 	}
 	query += ` ORDER BY created_at`
 

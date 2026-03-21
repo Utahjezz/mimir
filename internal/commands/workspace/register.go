@@ -33,6 +33,8 @@ func Register(workspaceCmd *cobra.Command) {
 
 	workspaceLinksCmd.Flags().StringVar(&workspaceLinksFrom, "from", "", "Filter links by source repo path (defaults to current directory)")
 	workspaceLinksCmd.Flags().BoolVar(&workspaceLinksJSON, "json", false, "Output results as JSON")
+	workspaceLinksCmd.Flags().StringVar(&workspaceLinksSrcSymbol, "src-symbol", "", "Filter links by source symbol name (exact match)")
+	workspaceLinksCmd.Flags().StringVar(&workspaceLinksDstSymbol, "dst-symbol", "", "Filter links by destination symbol name (exact match)")
 	workspaceCmd.AddCommand(workspaceLinksCmd)
 
 	workspaceCmd.AddCommand(workspaceUnlinkCmd)

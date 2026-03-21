@@ -69,7 +69,7 @@ func TestCreateLink_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateLink: %v", err)
 	}
-	links, err := ListLinks(wsDB, "", "")
+	links, err := ListLinks(wsDB, LinkQuery{})
 	if err != nil {
 		t.Fatalf("ListLinks: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestSetLinkMeta_Upsert(t *testing.T) {
 	}
 
 	// Assert: only one row, updated value
-	links, err := ListLinks(wsDB, "", "")
+	links, err := ListLinks(wsDB, LinkQuery{})
 	if err != nil {
 		t.Fatalf("ListLinks: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestListLinks_All(t *testing.T) {
 	CreateLink(wsDB, id3, "C", "", id2, "D", "", "")
 
 	// Act
-	links, err := ListLinks(wsDB, "", "")
+	links, err := ListLinks(wsDB, LinkQuery{})
 
 	// Assert
 	if err != nil {
@@ -186,7 +186,7 @@ func TestListLinks_Filtered(t *testing.T) {
 	CreateLink(wsDB, id3, "C", "", id2, "D", "", "")
 
 	// Act: filter to only id1 links
-	links, err := ListLinks(wsDB, id1, "")
+	links, err := ListLinks(wsDB, LinkQuery{SrcRepoID: id1})
 
 	// Assert
 	if err != nil {
@@ -218,7 +218,7 @@ func TestDeleteLink_Found(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteLink: %v", err)
 	}
-	links, _ := ListLinks(wsDB, "", "")
+	links, _ := ListLinks(wsDB, LinkQuery{})
 	if len(links) != 0 {
 		t.Errorf("expected 0 links after delete, got %d", len(links))
 	}
@@ -280,7 +280,7 @@ func TestRemoveRepository_CascadesLinks(t *testing.T) {
 	CreateLink(wsDB, srcID, "FuncA", "", dstID, "FuncB", "", "link to be cascaded")
 
 	// Verify link exists before removal
-	links, _ := ListLinks(wsDB, "", "")
+	links, _ := ListLinks(wsDB, LinkQuery{})
 	if len(links) != 1 {
 		t.Fatalf("pre-condition: expected 1 link, got %d", len(links))
 	}
@@ -291,7 +291,7 @@ func TestRemoveRepository_CascadesLinks(t *testing.T) {
 	}
 
 	// Assert: link is gone
-	links, err := ListLinks(wsDB, "", "")
+	links, err := ListLinks(wsDB, LinkQuery{})
 	if err != nil {
 		t.Fatalf("ListLinks after repo removal: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestListLinks_Empty(t *testing.T) {
 	wsDB := openFreshWorkspace(t, tmp)
 
 	// Act
-	links, err := ListLinks(wsDB, "", "")
+	links, err := ListLinks(wsDB, LinkQuery{})
 
 	// Assert
 	if err != nil {
@@ -321,3 +321,98 @@ func TestListLinks_Empty(t *testing.T) {
 
 // Compile-time check: ensure indexer package is available in test binary.
 var _ = indexer.RepoID
+
+// TestListLinks_FilterBySrcSymbol verifies that SrcSymbol in the query filters
+// to only links whose src_symbol matches.
+func TestListLinks_FilterBySrcSymbol(t *testing.T) {
+	// Arrange
+	tmp := t.TempDir()
+	wsDB := openFreshWorkspace(t, tmp)
+	r1 := makeIndexedRepo(t)
+	r2 := makeIndexedRepo(t)
+	id1, _ := AddRepository(wsDB, r1)
+	id2, _ := AddRepository(wsDB, r2)
+
+	CreateLink(wsDB, id1, "Alpha", "", id2, "Beta", "", "")
+	CreateLink(wsDB, id1, "Gamma", "", id2, "Delta", "", "")
+
+	// Act: filter to src_symbol = "Alpha"
+	links, err := ListLinks(wsDB, LinkQuery{SrcSymbol: "Alpha"})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("ListLinks SrcSymbol: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(links))
+	}
+	if links[0].SrcSymbol != "Alpha" {
+		t.Errorf("SrcSymbol: got %q, want %q", links[0].SrcSymbol, "Alpha")
+	}
+}
+
+// TestListLinks_FilterByDstSymbol verifies that DstSymbol in the query filters
+// to only links whose dst_symbol matches.
+func TestListLinks_FilterByDstSymbol(t *testing.T) {
+	// Arrange
+	tmp := t.TempDir()
+	wsDB := openFreshWorkspace(t, tmp)
+	r1 := makeIndexedRepo(t)
+	r2 := makeIndexedRepo(t)
+	id1, _ := AddRepository(wsDB, r1)
+	id2, _ := AddRepository(wsDB, r2)
+
+	CreateLink(wsDB, id1, "Alpha", "", id2, "Beta", "", "")
+	CreateLink(wsDB, id1, "Gamma", "", id2, "Delta", "", "")
+
+	// Act: filter to dst_symbol = "Delta"
+	links, err := ListLinks(wsDB, LinkQuery{DstSymbol: "Delta"})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("ListLinks DstSymbol: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(links))
+	}
+	if links[0].DstSymbol != "Delta" {
+		t.Errorf("DstSymbol: got %q, want %q", links[0].DstSymbol, "Delta")
+	}
+}
+
+// TestListLinks_FilterCombined verifies that combining SrcRepoID + DstSymbol
+// correctly intersects both conditions.
+func TestListLinks_FilterCombined(t *testing.T) {
+	// Arrange
+	tmp := t.TempDir()
+	wsDB := openFreshWorkspace(t, tmp)
+	r1 := makeIndexedRepo(t)
+	r2 := makeIndexedRepo(t)
+	r3 := makeIndexedRepo(t)
+	id1, _ := AddRepository(wsDB, r1)
+	id2, _ := AddRepository(wsDB, r2)
+	id3, _ := AddRepository(wsDB, r3)
+
+	CreateLink(wsDB, id1, "Alpha", "", id2, "Target", "", "") // matches both
+	CreateLink(wsDB, id3, "Alpha", "", id2, "Target", "", "") // wrong src
+	CreateLink(wsDB, id1, "Beta", "", id2, "Target", "", "")  // wrong src symbol
+
+	// Act: only id1 → "Target"
+	links, err := ListLinks(wsDB, LinkQuery{SrcRepoID: id1, DstSymbol: "Target"})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("ListLinks combined: %v", err)
+	}
+	if len(links) != 2 {
+		t.Fatalf("expected 2 links (both id1→Target), got %d", len(links))
+	}
+	for _, l := range links {
+		if l.SrcRepoID != id1 {
+			t.Errorf("unexpected SrcRepoID %q", l.SrcRepoID)
+		}
+		if l.DstSymbol != "Target" {
+			t.Errorf("unexpected DstSymbol %q", l.DstSymbol)
+		}
+	}
+}
