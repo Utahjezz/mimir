@@ -28,6 +28,7 @@ func runWorkspaceCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	cmd.Printf("Workspace created %q\n", name)
+	cmd.Printf("Next, set it as current: mimir workspace use %s\n", name)
 
 	return nil
 }
