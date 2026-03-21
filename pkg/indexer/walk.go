@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -103,7 +104,7 @@ func Run(root string, db *sql.DB) (IndexStats, error) {
 				return err
 			}
 			if d.IsDir() {
-				if skipDirs[d.Name()] || d.Name()[0] == '.' {
+				if skipDirs[d.Name()] || strings.HasPrefix(d.Name(), ".") {
 					return filepath.SkipDir
 				}
 				return nil
@@ -149,8 +150,15 @@ func Run(root string, db *sql.DB) (IndexStats, error) {
 	}
 
 	// Drain visited map — walker goroutine has finished (jobs closed).
+	// Receiving from visited establishes a happens-before relationship:
+	// the walker goroutine sent on visited only after completing the WalkDir call
+	// (and assigning the result to walkErr). Reading walkErr here is therefore safe —
+	// the send on visited synchronizes-with this receive, ensuring all writes to
+	// walkErr in the walker goroutine are visible to this goroutine.
 	v := <-visited
 
+	// At this point, walkErr has been assigned by the walker goroutine.
+	// The channel receive above guarantees visibility of that assignment.
 	if walkErr != nil {
 		return IndexStats{}, fmt.Errorf("walk error: %w", walkErr)
 	}

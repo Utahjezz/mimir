@@ -13,7 +13,7 @@ mimir dead ./myrepo --unexported
 
 ## Features
 
-- **9 CLI commands** — index, search, symbol lookup, cross-reference tracing, dead-code detection, file tree, report
+- **9 CLI commands + workspace sub-commands** — index, search, symbol lookup, cross-reference tracing, dead-code detection, file tree, report; plus `workspace` to manage named collections of repos and declare cross-repo symbol links
 - **6 languages** — Go, JavaScript, TypeScript, TSX, Python, C#
 - **Incremental re-index** — mtime+size stat-skip; only changed files are re-parsed
 - **Auto-refresh** — query commands transparently re-index stale files; no manual `mimir index` needed between edits
@@ -118,6 +118,137 @@ mimir dead ./myrepo --unexported
 ```
 --refresh-threshold <duration>   Minimum index age before a query triggers auto re-index
                                  (default 10s; e.g. 30s, 2m, 0s for always-refresh)
+```
+
+---
+
+## Workspaces
+
+A workspace is a named collection of repositories. Create one workspace per project or team, add multiple repos to it, and index them all with a single command.
+
+```bash
+# Create a workspace and set it as active
+mimir workspace create myproject
+# Next, set it as current: mimir workspace use myproject
+mimir workspace use myproject
+
+# Add repositories
+mimir workspace add ~/code/backend
+mimir workspace add ~/code/frontend
+
+# Index all repos in the active workspace (2 concurrent by default)
+mimir workspace index
+
+# Show what's in the workspace
+mimir workspace show
+```
+
+### Workspace commands
+
+| Command | Syntax | Description |
+|---------|--------|-------------|
+| `workspace create` | `mimir workspace create <name>` | Create a new workspace |
+| `workspace use` | `mimir workspace use <name>` | Set the active workspace |
+| `workspace add` | `mimir workspace add <path> [workspace]` | Add a repository to a workspace |
+| `workspace remove` | `mimir workspace remove <path> [workspace]` | Remove a repository from a workspace |
+| `workspace show` | `mimir workspace show [workspace]` | List repositories in a workspace |
+| `workspace index` | `mimir workspace index [workspace] [flags]` | Index all repos in a workspace |
+| `workspace link` | `mimir workspace link <src-repo-id> <src-symbol> <dst-repo-id> <dst-symbol> [workspace]` | Declare a cross-repo symbol link |
+| `workspace links` | `mimir workspace links [--from <repo>] [--src-symbol <name>] [--dst-symbol <name>] [workspace]` | List cross-repo symbol links |
+| `workspace unlink` | `mimir workspace unlink <id> [workspace]` | Remove a cross-repo symbol link by ID |
+
+### `mimir workspace index` flags
+
+```
+--rebuild        Drop and rebuild each repo's index from scratch
+--concurrency N  Number of repos to index in parallel (default 2)
+--json           Output results as JSON (one object per repo)
+```
+
+### `mimir workspace link` flags
+
+```
+--src-file <path>   Disambiguate src-symbol when multiple files match
+--dst-file <path>   Disambiguate dst-symbol when multiple files match
+--note     <text>   Free-text note stored with the link
+--meta     <k=v>    Key/value metadata (repeatable: --meta protocol=grpc --meta transport=kafka)
+```
+
+### `mimir workspace links` flags
+
+```
+--from       <repo-id>   Filter links by source repo ID (defaults to cwd repo; lists all if cwd not in workspace)
+--src-symbol <name>      Filter links by source symbol name (exact match)
+--dst-symbol <name>      Filter links by destination symbol name (exact match)
+--json                   Output as JSON
+```
+
+### `mimir workspace show --json`
+
+```bash
+mimir workspace show --json | jq '.[].ID'
+```
+
+**DB location**: each workspace is stored at `~/.config/mimir/workspaces/<name>.db`
+The active workspace name is stored in `~/.config/mimir/config.json`.
+
+---
+
+## Cross-repo Symbol Links
+
+A cross-repo link is a manually declared mapping from a symbol in one repository to a symbol in another. Both sides are validated against their repo indexes when the link is created.
+
+**Common uses**: documenting gRPC/HTTP boundaries (client call → server handler), marking shared interfaces implemented across repos, or capturing any meaningful cross-codebase relationship.
+
+```bash
+# First, find your repo IDs
+mimir workspace show
+
+# Declare that OrderService.PlaceOrder in the backend calls PaymentClient.Charge in payments
+mimir workspace link backend-a1b2c3d4 OrderService.PlaceOrder payments-def45678 PaymentClient.Charge
+
+# Attach metadata and a note
+mimir workspace link backend-a1b2c3d4 OrderService.PlaceOrder payments-def45678 PaymentClient.Charge \
+  --meta protocol=grpc --meta transport=kafka \
+  --note "async via Kafka topic orders.placed"
+
+# If a symbol name is ambiguous, use --src-file or --dst-file to disambiguate
+mimir workspace link backend-a1b2c3d4 Shared payments-def45678 Shared \
+  --src-file pkg/orders/handler.go \
+  --dst-file pkg/payments/client.go
+
+# List all links in the active workspace (filters to cwd repo by default)
+mimir workspace links
+
+# List links from a specific repo (by repo ID)
+mimir workspace links --from backend-a1b2c3d4
+
+# List all links across the workspace
+mimir workspace links --from ""
+
+# Filter by source symbol name
+mimir workspace links --src-symbol OrderService.PlaceOrder
+
+# Filter by destination symbol name
+mimir workspace links --dst-symbol PaymentClient.Charge
+
+# Combine filters: links from a specific repo that target a specific symbol
+mimir workspace links --from backend-a1b2c3d4 --dst-symbol PaymentClient.Charge
+
+# JSON output for scripting
+mimir workspace links --json | jq '.[].SrcSymbol'
+
+# Remove a link by ID
+mimir workspace unlink 3
+```
+
+**Link output format:**
+```
+#1    OrderService.PlaceOrder (abc123)
+      → PaymentClient.Charge (def456)
+      note: async via Kafka topic orders.placed
+      protocol=grpc
+      transport=kafka
 ```
 
 ---
@@ -238,10 +369,12 @@ go build -o mimir ./cmd/mimir
 ## Project Structure
 
 ```
-cmd/mimir/          ← entry point
-internal/commands/  ← one file per subcommand
-pkg/indexer/        ← core: walker, parser, store, queries, facade
-  languages/        ← per-language tree-sitter grammars + queries
+cmd/mimir/              ← entry point
+internal/commands/      ← one file per subcommand
+  workspace/            ← workspace subcommands (create, use, add, show, remove, index, link, links, unlink)
+pkg/indexer/            ← core: walker, parser, store, queries, facade
+  languages/            ← per-language tree-sitter grammars + queries
+pkg/workspace/          ← workspace library: store, config, repository, index
 ```
 
 ---

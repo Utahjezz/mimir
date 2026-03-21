@@ -164,7 +164,7 @@ func runSymbolFromFile(cmd *cobra.Command, path, name string) error {
 	m := indexer.NewMuncher()
 	sym, err := m.GetSymbol(path, code, name)
 	if err != nil {
-		return err
+		return fmt.Errorf("symbol lookup: %w", err)
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "name:  %s\ntype:  %s\nlines: %d-%d\n\n",

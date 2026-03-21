@@ -26,7 +26,7 @@ go build -o mimir ./cmd/mimir
 
 # Run tests
 go test ./...
-# Expected: 194 pass, 1 skip, 0 fail
+# Expected: 265 pass, 0 skip, 0 fail
 
 # Try it on itself
 ./mimir index .
@@ -41,8 +41,10 @@ go test ./...
 ```
 cmd/mimir/          ← entry point (main.go)
 internal/commands/  ← one file per CLI subcommand
+  workspace/        ← workspace subcommands (create, use, add, show, remove, index)
 pkg/indexer/        ← core: walker, parser, store, queries, facade
   languages/        ← per-language tree-sitter grammars + queries
+pkg/workspace/      ← workspace library: store, config, repository, index
 ```
 
 **Key files:**
@@ -50,6 +52,9 @@ pkg/indexer/        ← core: walker, parser, store, queries, facade
 - `pkg/indexer/registry.go` — language registration
 - `pkg/indexer/store.go` — SQLite schema and CRUD
 - `internal/commands/*.go` — Cobra subcommand implementations
+- `pkg/workspace/store.go` — workspace DB schema and open/create
+- `pkg/workspace/config.go` — active workspace config (`~/.config/mimir/config.json`)
+- `pkg/workspace/index.go` — parallel repo indexing with semaphore
 
 ---
 

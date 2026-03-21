@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-var autoRefreshMutext sync.Mutex
+// autoRefreshMutex serializes re-index operations process-wide; each run holds the lock for the duration of Run().
+var autoRefreshMutex sync.Mutex
 
 // ShouldRefresh reports whether the index is stale and needs a re-walk.
 // It returns true when:
@@ -43,8 +44,8 @@ func ShouldRefresh(db *sql.DB, threshold time.Duration) (bool, error) {
 // This is the single entry point all query commands should use instead of
 // calling Run() directly.
 func AutoRefresh(root string, db *sql.DB, threshold time.Duration) (IndexStats, error) {
-	autoRefreshMutext.Lock()
-	defer autoRefreshMutext.Unlock()
+	autoRefreshMutex.Lock()
+	defer autoRefreshMutex.Unlock()
 
 	stale, err := ShouldRefresh(db, threshold)
 	if err != nil {

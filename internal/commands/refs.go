@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Utahjezz/mimir/pkg/indexer"
+	"github.com/Utahjezz/mimir/pkg/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -16,21 +17,38 @@ var (
 	refsHotspot   bool
 	refsLimit     int
 	refsNoRefresh bool
+	refsWorkspace string
 )
 
+// WorkspaceRefRow wraps a RefRow with the originating repo ID for
+// workspace-scoped fan-out results.
+type WorkspaceRefRow struct {
+	indexer.RefRow
+	RepoID string `json:"repo_id"`
+}
+
 var refsCmd = &cobra.Command{
-	Use:   "refs <root>",
+	Use:   "refs [root]",
 	Short: "Search cross-references in the index",
-	Long: `Query the refs table for <root>. Use --caller, --callee, or --file to filter.
+	Long: `Query the refs table for [root]. Use --caller, --callee, or --file to filter.
 With no flags, all indexed call sites are returned.
-Use --hotspot to print the top-N most-called symbols ranked by inbound call count.`,
-	Args: cobra.ExactArgs(1),
+Use --hotspot to print the top-N most-called symbols ranked by inbound call count.
+When --workspace is set, [root] is ignored and the query fans out across all repos in the workspace.`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runRefs,
 }
 
 func runRefs(cmd *cobra.Command, args []string) error {
-	root := args[0]
+	if refsWorkspace != "" {
+		return runRefsWorkspace(cmd, args)
+	}
+	if len(args) == 0 {
+		return fmt.Errorf("requires a [root] argument when --workspace is not set")
+	}
+	return runRefsSingle(cmd, args[0])
+}
 
+func runRefsSingle(cmd *cobra.Command, root string) error {
 	db, err := indexer.OpenIndex(root)
 	if err != nil {
 		return fmt.Errorf("cannot open index: %w", err)
@@ -97,4 +115,79 @@ func runRefs(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func runRefsWorkspace(cmd *cobra.Command, _ []string) error {
+	// Early-return guard: --hotspot and --workspace are mutually exclusive
+	if refsHotspot {
+		return fmt.Errorf("--hotspot and --workspace are mutually exclusive")
+	}
+
+	wsDB, err := workspace.OpenWorkspace(refsWorkspace)
+	if err != nil {
+		return fmt.Errorf("cannot open workspace %q: %w", refsWorkspace, err)
+	}
+	defer wsDB.Close()
+
+	repos, err := workspace.ListRepositories(wsDB)
+	if err != nil {
+		return fmt.Errorf("cannot list workspace repositories: %w", err)
+	}
+
+	q := indexer.RefQuery{
+		CallerName: refsCaller,
+		CalleeName: refsCallee,
+		CallerFile: refsFile,
+	}
+
+	var all []WorkspaceRefRow
+	for _, repo := range repos {
+		repoRows, err := searchRepoRefs(repo, q, refsNoRefresh)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: skipping repo %s (%s): %v\n", repo.ID, repo.Path, err)
+			continue
+		}
+		for _, r := range repoRows {
+			all = append(all, WorkspaceRefRow{RefRow: r, RepoID: repo.ID})
+		}
+	}
+
+	if refsJSON {
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(all)
+	}
+
+	if len(all) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), "no refs found")
+		return nil
+	}
+
+	for _, r := range all {
+		fmt.Fprintf(cmd.OutOrStdout(), "%-28s %-40s %-20s → %-20s line %d\n",
+			r.RepoID, r.CallerFile, r.CallerName, r.CalleeName, r.Line)
+	}
+
+	return nil
+}
+
+// searchRepoRefs opens the index for a single repo, optionally auto-refreshes,
+// and runs the ref query. The db is closed before returning.
+// noRefresh controls whether auto-refresh is skipped; when true, only searches without refreshing.
+func searchRepoRefs(repo workspace.Repository, q indexer.RefQuery, noRefresh bool) ([]indexer.RefRow, error) {
+	db, err := indexer.OpenIndex(repo.Path)
+	if err != nil {
+		return nil, fmt.Errorf("open index: %w", err)
+	}
+	defer db.Close()
+
+	if !noRefresh {
+		if _, err := indexer.AutoRefresh(repo.Path, db, RefreshThreshold); err != nil {
+			return nil, fmt.Errorf("auto-refresh: %w", err)
+		}
+	}
+
+	rows, err := indexer.SearchRefs(db, q)
+	if err != nil {
+		return nil, fmt.Errorf("search refs: %w", err)
+	}
+	return rows, nil
 }

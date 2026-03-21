@@ -118,7 +118,8 @@ func OpenIndex(root string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+	// 0700: index may contain source snippets; restrict to owner only
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		return nil, fmt.Errorf("cannot create index directory: %w", err)
 	}
 
@@ -399,8 +400,16 @@ func RepoID(root string) string {
 	return filepath.Base(abs) + "-" + hex.EncodeToString(sum[:])[:8]
 }
 
-// setMeta writes root, repo_id, and git_head into the meta table.
+// setMeta writes version, root, repo_id, and git_head into the meta table.
+// All 4 inserts are wrapped in a single transaction for atomicity.
+// If the process dies mid-loop, meta is now either fully updated or fully rolled back.
 func setMeta(db *sql.DB, absRoot string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("setMeta begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
 	pairs := []struct{ k, v string }{
 		{"version", fmt.Sprintf("%d", indexVersion)},
 		{"root", absRoot},
@@ -408,7 +417,7 @@ func setMeta(db *sql.DB, absRoot string) error {
 		{"git_head", gitHead(absRoot)},
 	}
 	for _, p := range pairs {
-		if _, err := db.Exec(
+		if _, err := tx.Exec(
 			`INSERT INTO meta (key, value) VALUES (?, ?)
 			 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 			p.k, p.v,
@@ -416,7 +425,7 @@ func setMeta(db *sql.DB, absRoot string) error {
 			return fmt.Errorf("setMeta %s: %w", p.k, err)
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 // resolveCallerName returns the name of the innermost symbol in syms whose
@@ -441,6 +450,11 @@ func resolveCallerName(syms []SymbolInfo, line int) string {
 // at dir. Returns an empty string if dir is not inside a git repository or if
 // git is not available — callers should treat "" as "unknown".
 func gitHead(dir string) string {
+	// Guard against paths that could be interpreted as git flags.
+	if strings.HasPrefix(dir, "-") {
+		return ""
+	}
+
 	cmd := exec.Command("git", "-C", dir, "rev-parse", "HEAD")
 	out, err := cmd.Output()
 	if err != nil {
