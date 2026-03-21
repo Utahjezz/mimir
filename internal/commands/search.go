@@ -116,7 +116,7 @@ func runSearchWorkspace(cmd *cobra.Command, _ []string) error {
 
 	var all []WorkspaceSymbolRow
 	for _, repo := range repos {
-		repoResults, err := searchRepoSymbols(repo, q)
+		repoResults, err := searchRepoSymbols(repo, q, searchNoRefresh)
 		if err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: skipping repo %s (%s): %v\n", repo.ID, repo.Path, err)
 			continue
@@ -145,14 +145,15 @@ func runSearchWorkspace(cmd *cobra.Command, _ []string) error {
 
 // searchRepoSymbols opens the index for a single repo, optionally auto-refreshes,
 // and runs the query. The db is closed before returning.
-func searchRepoSymbols(repo workspace.Repository, q indexer.SearchQuery) ([]indexer.SymbolRow, error) {
+// noRefresh controls whether auto-refresh is skipped; when true, only searches without refreshing.
+func searchRepoSymbols(repo workspace.Repository, q indexer.SearchQuery, noRefresh bool) ([]indexer.SymbolRow, error) {
 	db, err := indexer.OpenIndex(repo.Path)
 	if err != nil {
 		return nil, fmt.Errorf("open index: %w", err)
 	}
 	defer db.Close()
 
-	if !searchNoRefresh {
+	if !noRefresh {
 		if _, err := indexer.AutoRefresh(repo.Path, db, RefreshThreshold); err != nil {
 			return nil, fmt.Errorf("auto-refresh: %w", err)
 		}

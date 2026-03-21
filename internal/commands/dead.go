@@ -76,9 +76,11 @@ func runDead(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Fprintln(cmd.ErrOrStderr(), "warning: dead-code uses name-only matching — symbols whose names collide with"+
-		" common stdlib names (e.g. Open, Close, Error, Read, Write, String) may be missing from results (false negatives)."+
-		" Use --unexported and --file to reduce noise.")
+	if !deadJSON {
+		fmt.Fprintln(cmd.ErrOrStderr(), "warning: dead-code uses name-only matching — symbols whose names collide with"+
+			" common stdlib names (e.g. Open, Close, Error, Read, Write, String) may be missing from results (false negatives)."+
+			" Use --unexported and --file to reduce noise.")
+	}
 
 	return nil
 }

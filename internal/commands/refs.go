@@ -118,6 +118,11 @@ func runRefsSingle(cmd *cobra.Command, root string) error {
 }
 
 func runRefsWorkspace(cmd *cobra.Command, _ []string) error {
+	// Early-return guard: --hotspot and --workspace are mutually exclusive
+	if refsHotspot {
+		return fmt.Errorf("--hotspot and --workspace are mutually exclusive")
+	}
+
 	wsDB, err := workspace.OpenWorkspace(refsWorkspace)
 	if err != nil {
 		return fmt.Errorf("cannot open workspace %q: %w", refsWorkspace, err)
@@ -137,7 +142,7 @@ func runRefsWorkspace(cmd *cobra.Command, _ []string) error {
 
 	var all []WorkspaceRefRow
 	for _, repo := range repos {
-		repoRows, err := searchRepoRefs(repo, q)
+		repoRows, err := searchRepoRefs(repo, q, refsNoRefresh)
 		if err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "warning: skipping repo %s (%s): %v\n", repo.ID, repo.Path, err)
 			continue
@@ -166,14 +171,15 @@ func runRefsWorkspace(cmd *cobra.Command, _ []string) error {
 
 // searchRepoRefs opens the index for a single repo, optionally auto-refreshes,
 // and runs the ref query. The db is closed before returning.
-func searchRepoRefs(repo workspace.Repository, q indexer.RefQuery) ([]indexer.RefRow, error) {
+// noRefresh controls whether auto-refresh is skipped; when true, only searches without refreshing.
+func searchRepoRefs(repo workspace.Repository, q indexer.RefQuery, noRefresh bool) ([]indexer.RefRow, error) {
 	db, err := indexer.OpenIndex(repo.Path)
 	if err != nil {
 		return nil, fmt.Errorf("open index: %w", err)
 	}
 	defer db.Close()
 
-	if !refsNoRefresh {
+	if !noRefresh {
 		if _, err := indexer.AutoRefresh(repo.Path, db, RefreshThreshold); err != nil {
 			return nil, fmt.Errorf("auto-refresh: %w", err)
 		}
