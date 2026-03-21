@@ -3,6 +3,7 @@ package workspace
 // link_test.go — unit tests for CreateLink, SetLinkMeta, ListLinks, DeleteLink.
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/Utahjezz/mimir/pkg/indexer"
@@ -68,7 +69,7 @@ func TestCreateLink_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateLink: %v", err)
 	}
-	links, err := ListLinks(wsDB, "")
+	links, err := ListLinks(wsDB, "", "")
 	if err != nil {
 		t.Fatalf("ListLinks: %v", err)
 	}
@@ -120,9 +121,15 @@ func TestSetLinkMeta_Upsert(t *testing.T) {
 	}
 
 	// Assert: only one row, updated value
-	links, err := ListLinks(wsDB, "")
+	links, err := ListLinks(wsDB, "", "")
 	if err != nil {
 		t.Fatalf("ListLinks: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(links))
+	}
+	if len(links[0].Meta) != 1 {
+		t.Errorf("expected 1 meta entry, got %d", len(links[0].Meta))
 	}
 	if len(links) != 1 {
 		t.Fatalf("expected 1 link, got %d", len(links))
@@ -135,7 +142,7 @@ func TestSetLinkMeta_Upsert(t *testing.T) {
 	}
 }
 
-// TestListLinks_All verifies that ListLinks with an empty srcRepoID returns
+// TestListLinks_All verifies that ListLinks with empty filters returns
 // links from all repos.
 func TestListLinks_All(t *testing.T) {
 	// Arrange
@@ -152,7 +159,7 @@ func TestListLinks_All(t *testing.T) {
 	CreateLink(wsDB, id3, "C", "", id2, "D", "", "")
 
 	// Act
-	links, err := ListLinks(wsDB, "")
+	links, err := ListLinks(wsDB, "", "")
 
 	// Assert
 	if err != nil {
@@ -179,7 +186,7 @@ func TestListLinks_Filtered(t *testing.T) {
 	CreateLink(wsDB, id3, "C", "", id2, "D", "", "")
 
 	// Act: filter to only id1 links
-	links, err := ListLinks(wsDB, id1)
+	links, err := ListLinks(wsDB, id1, "")
 
 	// Assert
 	if err != nil {
@@ -205,22 +212,19 @@ func TestDeleteLink_Found(t *testing.T) {
 	linkID, _ := CreateLink(wsDB, srcID, "FuncA", "", dstID, "FuncB", "", "")
 
 	// Act
-	deleted, err := DeleteLink(wsDB, linkID)
+	err := DeleteLink(wsDB, linkID)
 
 	// Assert
 	if err != nil {
 		t.Fatalf("DeleteLink: %v", err)
 	}
-	if !deleted {
-		t.Error("expected DeleteLink to return true for existing link")
-	}
-	links, _ := ListLinks(wsDB, "")
+	links, _ := ListLinks(wsDB, "", "")
 	if len(links) != 0 {
 		t.Errorf("expected 0 links after delete, got %d", len(links))
 	}
 }
 
-// TestDeleteLink_NotFound verifies that DeleteLink returns false (not an error)
+// TestDeleteLink_NotFound verifies that DeleteLink returns ErrLinkNotFound
 // when no link with the given ID exists.
 func TestDeleteLink_NotFound(t *testing.T) {
 	// Arrange
@@ -228,14 +232,11 @@ func TestDeleteLink_NotFound(t *testing.T) {
 	wsDB := openFreshWorkspace(t, tmp)
 
 	// Act
-	deleted, err := DeleteLink(wsDB, 9999)
+	err := DeleteLink(wsDB, 9999)
 
 	// Assert
-	if err != nil {
-		t.Fatalf("expected nil error for missing link, got: %v", err)
-	}
-	if deleted {
-		t.Error("expected DeleteLink to return false for non-existent link")
+	if !errors.Is(err, ErrLinkNotFound) {
+		t.Fatalf("expected ErrLinkNotFound for missing link, got: %v", err)
 	}
 }
 
@@ -279,7 +280,7 @@ func TestRemoveRepository_CascadesLinks(t *testing.T) {
 	CreateLink(wsDB, srcID, "FuncA", "", dstID, "FuncB", "", "link to be cascaded")
 
 	// Verify link exists before removal
-	links, _ := ListLinks(wsDB, "")
+	links, _ := ListLinks(wsDB, "", "")
 	if len(links) != 1 {
 		t.Fatalf("pre-condition: expected 1 link, got %d", len(links))
 	}
@@ -290,7 +291,7 @@ func TestRemoveRepository_CascadesLinks(t *testing.T) {
 	}
 
 	// Assert: link is gone
-	links, err := ListLinks(wsDB, "")
+	links, err := ListLinks(wsDB, "", "")
 	if err != nil {
 		t.Fatalf("ListLinks after repo removal: %v", err)
 	}
@@ -307,7 +308,7 @@ func TestListLinks_Empty(t *testing.T) {
 	wsDB := openFreshWorkspace(t, tmp)
 
 	// Act
-	links, err := ListLinks(wsDB, "")
+	links, err := ListLinks(wsDB, "", "")
 
 	// Assert
 	if err != nil {

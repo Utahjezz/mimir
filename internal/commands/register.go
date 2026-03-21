@@ -40,6 +40,7 @@ func Register(root *cobra.Command) {
 	searchCmd.Flags().StringVar(&searchFile, "file", "", "Filter by file path")
 	searchCmd.Flags().BoolVar(&searchJSON, "json", false, "Output results as JSON")
 	searchCmd.Flags().BoolVar(&searchNoRefresh, "no-refresh", false, "Skip automatic re-index before querying")
+	searchCmd.Flags().StringVar(&searchWorkspace, "workspace", "", "Fan out search across all repos in this workspace")
 	root.AddCommand(searchCmd)
 
 	// report
@@ -55,6 +56,7 @@ func Register(root *cobra.Command) {
 	refsCmd.Flags().BoolVar(&refsHotspot, "hotspot", false, "Print the top-N most-called symbols ranked by inbound call count")
 	refsCmd.Flags().IntVar(&refsLimit, "limit", 20, "Number of results to return for --hotspot (default 20)")
 	refsCmd.Flags().BoolVar(&refsNoRefresh, "no-refresh", false, "Skip automatic re-index before querying")
+	refsCmd.Flags().StringVar(&refsWorkspace, "workspace", "", "Fan out refs query across all repos in this workspace")
 	root.AddCommand(refsCmd)
 
 	// tree

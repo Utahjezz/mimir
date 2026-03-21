@@ -437,7 +437,7 @@ func TestRunWorkspaceLink_WithMeta(t *testing.T) {
 		t.Fatalf("OpenWorkspace: %v", err)
 	}
 	defer db.Close()
-	links, err := workspace.ListLinks(db, "")
+	links, err := workspace.ListLinks(db, "", "")
 	if err != nil {
 		t.Fatalf("ListLinks: %v", err)
 	}
@@ -747,7 +747,7 @@ func TestRunWorkspaceUnlink_HappyPath(t *testing.T) {
 		t.Fatalf("OpenWorkspace: %v", err)
 	}
 	defer db.Close()
-	links, _ := workspace.ListLinks(db, "")
+	links, _ := workspace.ListLinks(db, "", "")
 	if len(links) != 0 {
 		t.Errorf("expected 0 links after unlink, got %d", len(links))
 	}
@@ -792,5 +792,242 @@ func TestRunWorkspaceUnlink_InvalidID(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "numeric") {
 		t.Errorf("error should mention 'numeric', got: %v", err)
+	}
+}
+
+// --------------------------------------------------------------------------
+// workspace list
+// --------------------------------------------------------------------------
+
+func runListCmd(t *testing.T, jsonFlag bool) (string, error) {
+	t.Helper()
+	t.Cleanup(func() { workspaceListJSON = false })
+	workspaceListJSON = jsonFlag
+	out := &bytes.Buffer{}
+	cmd := newCmd()
+	cmd.SetOut(out)
+	err := runWorkspaceList(cmd, []string{})
+	return out.String(), err
+}
+
+// TestRunWorkspaceList_Empty verifies that listing with no workspaces on disk
+// produces no output and no error.
+func TestRunWorkspaceList_Empty(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	// Act
+	out, err := runListCmd(t, false)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if out != "" {
+		t.Errorf("expected empty output, got: %q", out)
+	}
+}
+
+// TestRunWorkspaceList_ListsAll verifies that all created workspace names
+// appear in the output.
+func TestRunWorkspaceList_ListsAll(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, name := range []string{"ws-one", "ws-two"} {
+		if err := runCreateCmd(t, name); err != nil {
+			t.Fatalf("create %q: %v", name, err)
+		}
+	}
+
+	// Act
+	out, err := runListCmd(t, false)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	for _, name := range []string{"ws-one", "ws-two"} {
+		if !strings.Contains(out, name) {
+			t.Errorf("expected %q in output, got:\n%s", name, out)
+		}
+	}
+}
+
+// TestRunWorkspaceList_MarksCurrentWorkspace verifies that the active workspace
+// is marked with * and others are not.
+func TestRunWorkspaceList_MarksCurrentWorkspace(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, name := range []string{"ws-active", "ws-other"} {
+		if err := runCreateCmd(t, name); err != nil {
+			t.Fatalf("create %q: %v", name, err)
+		}
+	}
+	if err := runUseCmd(t, "ws-active"); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+
+	// Act
+	out, err := runListCmd(t, false)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if !strings.Contains(out, "* ws-active") {
+		t.Errorf("expected active workspace marked with *, got:\n%s", out)
+	}
+	if strings.Contains(out, "* ws-other") {
+		t.Errorf("expected ws-other NOT marked with *, got:\n%s", out)
+	}
+}
+
+// TestRunWorkspaceList_JSON verifies that --json outputs a valid JSON array
+// containing all workspace names.
+func TestRunWorkspaceList_JSON(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, name := range []string{"alpha", "beta"} {
+		if err := runCreateCmd(t, name); err != nil {
+			t.Fatalf("create %q: %v", name, err)
+		}
+	}
+
+	// Act
+	out, err := runListCmd(t, true)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	for _, name := range []string{"alpha", "beta"} {
+		if !strings.Contains(out, name) {
+			t.Errorf("expected %q in JSON output, got:\n%s", name, out)
+		}
+	}
+	// Must start with '[' — a JSON array.
+	trimmed := strings.TrimSpace(out)
+	if len(trimmed) == 0 || trimmed[0] != '[' {
+		t.Errorf("expected JSON array output, got:\n%s", out)
+	}
+}
+
+// --------------------------------------------------------------------------
+// workspace delete
+// --------------------------------------------------------------------------
+
+func runDeleteCmd(t *testing.T, name string, confirm bool) (string, error) {
+	t.Helper()
+	t.Cleanup(func() { workspaceDeleteConfirm = false })
+	workspaceDeleteConfirm = confirm
+	out := &bytes.Buffer{}
+	cmd := newCmd()
+	cmd.SetOut(out)
+	err := runWorkspaceDelete(cmd, []string{name})
+	return out.String(), err
+}
+
+// TestRunWorkspaceDelete_RequiresConfirm verifies that omitting --confirm
+// returns an error and does NOT delete the workspace.
+func TestRunWorkspaceDelete_RequiresConfirm(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := runCreateCmd(t, "protected"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Act
+	_, err := runDeleteCmd(t, "protected", false)
+
+	// Assert: must error
+	if err == nil {
+		t.Fatal("expected error when --confirm is not passed, got nil")
+	}
+	if !strings.Contains(err.Error(), "--confirm") {
+		t.Errorf("error should mention --confirm, got: %v", err)
+	}
+
+	// Workspace must still exist.
+	names, _ := workspace.ListWorkspaces()
+	found := false
+	for _, n := range names {
+		if n == "protected" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("workspace was deleted despite missing --confirm")
+	}
+}
+
+// TestRunWorkspaceDelete_HappyPath verifies that passing --confirm deletes
+// the workspace DB and prints a confirmation message.
+func TestRunWorkspaceDelete_HappyPath(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := runCreateCmd(t, "todelete"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Act
+	out, err := runDeleteCmd(t, "todelete", true)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if !strings.Contains(out, "todelete") {
+		t.Errorf("expected confirmation message mentioning workspace name, got: %q", out)
+	}
+
+	// Workspace must no longer appear in list.
+	names, _ := workspace.ListWorkspaces()
+	for _, n := range names {
+		if n == "todelete" {
+			t.Error("workspace still exists after delete")
+		}
+	}
+}
+
+// TestRunWorkspaceDelete_NotFound verifies that deleting a non-existent
+// workspace returns a clear error.
+func TestRunWorkspaceDelete_NotFound(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	// Act
+	_, err := runDeleteCmd(t, "ghost", true)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error for non-existent workspace, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention 'not found', got: %v", err)
+	}
+}
+
+// TestRunWorkspaceDelete_ClearsCurrentWorkspace verifies that deleting the
+// active workspace clears it from the global config so subsequent commands
+// do not fail with a stale reference.
+func TestRunWorkspaceDelete_ClearsCurrentWorkspace(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := runCreateCmd(t, "active"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := runUseCmd(t, "active"); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+
+	// Act
+	if _, err := runDeleteCmd(t, "active", true); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	// Assert: current workspace must now be unset.
+	_, err := workspace.GetCurrentWorkspace()
+	if !errors.Is(err, workspace.ErrNoCurrentWorkspace) {
+		t.Errorf("expected ErrNoCurrentWorkspace after deleting active workspace, got: %v", err)
 	}
 }

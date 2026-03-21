@@ -40,10 +40,11 @@ func SetLinkMeta(db *sql.DB, linkID int64, key, value string) error {
 	return nil
 }
 
-// ListLinks returns all links in the workspace. When srcRepoID is non-empty
-// only links whose src_repo_id matches are returned. Each Link's Meta map is
-// populated from the link_meta table.
-func ListLinks(db *sql.DB, srcRepoID string) ([]Link, error) {
+// ListLinks returns all links in the workspace. srcRepoID and dstRepoID are
+// optional filters (empty string = no filter); both may be set simultaneously.
+// Results are ordered by created_at.
+// Each Link's Meta map is populated from the link_meta table.
+func ListLinks(db *sql.DB, srcRepoID, dstRepoID string) ([]Link, error) {
 	query := `SELECT id, src_repo_id, src_symbol, src_file,
 	                 dst_repo_id, dst_symbol, dst_file, note, created_at
 	          FROM links`
@@ -52,7 +53,15 @@ func ListLinks(db *sql.DB, srcRepoID string) ([]Link, error) {
 		query += ` WHERE src_repo_id = ?`
 		args = append(args, srcRepoID)
 	}
-	query += ` ORDER BY id`
+	if dstRepoID != "" {
+		if srcRepoID != "" {
+			query += ` AND dst_repo_id = ?`
+		} else {
+			query += ` WHERE dst_repo_id = ?`
+		}
+		args = append(args, dstRepoID)
+	}
+	query += ` ORDER BY created_at`
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -108,16 +117,19 @@ func getLinkMeta(db *sql.DB, linkID int64) (map[string]string, error) {
 	return meta, rows.Err()
 }
 
-// DeleteLink removes the link with the given ID. It returns (false, nil) when
-// no such link exists and (true, nil) on success.
-func DeleteLink(db *sql.DB, id int64) (bool, error) {
+// DeleteLink removes the link with the given ID.
+// Returns ErrLinkNotFound when no link with that ID exists.
+func DeleteLink(db *sql.DB, id int64) error {
 	res, err := db.Exec(`DELETE FROM links WHERE id = ?`, id)
 	if err != nil {
-		return false, fmt.Errorf("DeleteLink: %w", err)
+		return fmt.Errorf("DeleteLink: %w", err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("DeleteLink rows affected: %w", err)
+		return fmt.Errorf("DeleteLink rows affected: %w", err)
 	}
-	return n > 0, nil
+	if n == 0 {
+		return fmt.Errorf("%w: #%d", ErrLinkNotFound, id)
+	}
+	return nil
 }

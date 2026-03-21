@@ -33,12 +33,8 @@ func runWorkspaceUnlink(cmd *cobra.Command, args []string) error {
 	}
 	defer db.Close()
 
-	deleted, err := workspace.DeleteLink(db, id)
-	if err != nil {
+	if err := workspace.DeleteLink(db, id); err != nil {
 		return fmt.Errorf("cannot delete link: %w", err)
-	}
-	if !deleted {
-		return fmt.Errorf("link #%d not found", id)
 	}
 
 	cmd.Printf("Link #%d removed\n", id)

@@ -19,6 +19,12 @@ func Register(workspaceCmd *cobra.Command) {
 	workspaceShowCmd.Flags().BoolVar(&workspaceShowJSON, "json", false, "Output results as JSON")
 	workspaceCmd.AddCommand(workspaceShowCmd)
 
+	workspaceListCmd.Flags().BoolVar(&workspaceListJSON, "json", false, "Output results as JSON")
+	workspaceCmd.AddCommand(workspaceListCmd)
+
+	workspaceDeleteCmd.Flags().BoolVar(&workspaceDeleteConfirm, "confirm", false, "Confirm permanent deletion of the workspace")
+	workspaceCmd.AddCommand(workspaceDeleteCmd)
+
 	workspaceLinkCmd.Flags().StringVar(&workspaceLinkSrcFile, "src-file", "", "Disambiguate src symbol by file path suffix")
 	workspaceLinkCmd.Flags().StringVar(&workspaceLinkDstFile, "dst-file", "", "Disambiguate dst symbol by file path suffix")
 	workspaceLinkCmd.Flags().StringVar(&workspaceLinkNote, "note", "", "Human-readable description of the link")

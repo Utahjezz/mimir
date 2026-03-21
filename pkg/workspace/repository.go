@@ -20,28 +20,30 @@ func AddRepository(db *sql.DB, path string) (string, error) {
 
 	repoDB, err := indexer.OpenIndex(absPath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("cannot open repo index: %w", err)
 	}
 	defer repoDB.Close()
 
-	last_indexed_at, err := indexer.GetLastIndexedAt(repoDB)
+	lastIndexedAt, err := indexer.GetLastIndexedAt(repoDB)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("cannot get last indexed time: %w", err)
 	}
 
 	repoID := indexer.RepoID(absPath)
 
-	_, err = db.Exec(
+	if _, err = db.Exec(
 		`INSERT OR IGNORE INTO repositories (id, path, last_indexed_at) VALUES (?, ?, ?)`,
-		repoID, absPath, last_indexed_at,
-	)
-	return repoID, err
+		repoID, absPath, lastIndexedAt,
+	); err != nil {
+		return "", fmt.Errorf("cannot insert repository: %w", err)
+	}
+	return repoID, nil
 }
 
 func ListRepositories(db *sql.DB) ([]Repository, error) {
-	rows, err := db.Query(`SELECT id, path, added_at, last_indexed_at FROM repositories`)
+	rows, err := db.Query(`SELECT id, path, added_at, last_indexed_at FROM repositories ORDER BY added_at`)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot query repositories: %w", err)
 	}
 	defer rows.Close()
 
@@ -49,12 +51,15 @@ func ListRepositories(db *sql.DB) ([]Repository, error) {
 	for rows.Next() {
 		var repo Repository
 		if err := rows.Scan(&repo.ID, &repo.Path, &repo.AddedAt, &repo.LastIndexed); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("cannot scan repository: %w", err)
 		}
 		repos = append(repos, repo)
 	}
 
-	return repos, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repositories iteration error: %w", err)
+	}
+	return repos, nil
 }
 
 // RemoveRepository removes a repository from the workspace by its path.

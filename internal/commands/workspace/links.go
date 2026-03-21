@@ -60,7 +60,7 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 		// If fromPath is not in the workspace, srcFilter stays "" → list all.
 	}
 
-	links, err := workspace.ListLinks(db, srcFilter)
+	links, err := workspace.ListLinks(db, srcFilter, "")
 	if err != nil {
 		return err
 	}
