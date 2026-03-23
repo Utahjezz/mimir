@@ -15,7 +15,7 @@ mimir workspace index                   # indexes all repos concurrently
 ## Commands
 
 ### `mimir workspace create <name>`
-Create a new workspace. No-op if it already exists.
+Create a new workspace. If it already exists, opens and verifies the connection (always prints "Workspace created").
 
 ### `mimir workspace use <name>`
 Set the active workspace for subsequent commands.
@@ -42,7 +42,7 @@ Permanently delete a workspace. Requires `--confirm`. Irreversible.
 
 Declare explicit connections between symbols in different repos (e.g., gRPC caller/callee).
 
-### `mimir workspace link <src-repo> <src-symbol> <dst-repo> <dst-symbol> [workspace]`
+### `mimir workspace link <src-repo-id> <src-symbol> <dst-repo-id> <dst-symbol> [workspace]`
 
 | Flag | Description |
 |------|-------------|
@@ -52,14 +52,15 @@ Declare explicit connections between symbols in different repos (e.g., gRPC call
 | `--meta <k=v>` | Key/value metadata (repeatable) |
 
 ```bash
-mimir workspace link ~/code/backend OrderService.PlaceOrder \
-                     ~/code/payments PaymentClient.Charge \
+# First, find repo IDs with: mimir workspace show
+mimir workspace link backend-a1b2c3d4 OrderService.PlaceOrder \
+                     payments-def45678 PaymentClient.Charge \
   --meta protocol=grpc \
   --note "synchronous call on checkout"
 ```
 
 ### `mimir workspace links [workspace] [--from <path>] [--src-symbol <name>] [--dst-symbol <name>] [--json]`
-List links. Defaults to filtering by cwd repo. Pass `--from ""` to list all.
+List links. Defaults to filtering by the repo containing the current working directory. To list all links, run from a directory that is not registered in the workspace.
 
 ### `mimir workspace unlink <id> [workspace]`
 Remove a link by numeric ID (shown in `workspace links` output).

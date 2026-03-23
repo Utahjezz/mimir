@@ -50,7 +50,7 @@ mimir tree <path> --depth 3           # Directory structure with symbol counts
 
 ## Supported Languages
 
-`.py` `.js` `.mjs` `.cjs` `.ts` `.mts` `.cts` `.tsx` `.go` `.cs`
+`.py` `.pyw` `.js` `.jsx` `.mjs` `.cjs` `.ts` `.mts` `.cts` `.tsx` `.go` `.cs`
 
 All other file types are silently skipped. Dot-directories (`.git`, `.venv`), `node_modules`, and `vendor` are always skipped.
 

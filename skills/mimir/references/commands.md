@@ -81,10 +81,10 @@ mimir symbol <root-or-file> <name> [--type <type>] [--no-refresh] [--json]
 |------|-------------|
 | `--type <str>` | Narrow to specific symbol type when multiple matches exist |
 | `--no-refresh` | Skip automatic re-index |
-| `--json` | Output as JSON array |
+| `--json` | Output as JSON array (index-aware mode only; ignored in file mode) |
 
-**Index-aware mode** (preferred): `<root-or-file>` is a directory — resolves file automatically.
-**File mode**: `<root-or-file>` is a file path — parses directly without index.
+**Index-aware mode** (preferred): `<root-or-file>` is a directory — resolves file automatically and honors `--json`.
+**File mode**: `<root-or-file>` is a file path — parses directly without index; `--json` is ignored.
 
 **Output:**
 ```
@@ -105,7 +105,7 @@ func (m *MuncherFacade) GetSymbols(path string, code []byte) ([]SymbolInfo, erro
 Query the symbol index. With no flags, returns all indexed symbols.
 
 ```bash
-mimir search <root> [--name <exact>] [--like <prefix>] [--fuzzy <fts5>]
+mimir search [root] [--name <exact>] [--like <prefix>] [--fuzzy <fts5>]
                     [--type <type>] [--file <path>]
                     [--workspace <name>] [--no-refresh] [--json]
 ```
@@ -113,11 +113,11 @@ mimir search <root> [--name <exact>] [--like <prefix>] [--fuzzy <fts5>]
 | Flag | Description |
 |------|-------------|
 | `--name <str>` | Exact symbol name match |
-| `--like <str>` | Symbol name prefix (SQL `LIKE` — append `%` manually if needed) |
+| `--like <str>` | Symbol name prefix (SQL `LIKE` — trailing `%` is added automatically; do not include it) |
 | `--fuzzy <str>` | FTS5 match: camelCase/snake_case splitting, multi-word, body snippet |
 | `--type <str>` | Filter by symbol type |
-| `--file <str>` | Filter by file path substring |
-| `--workspace <name>` | Fan out search across all repos in workspace |
+| `--file <str>` | Exact match on indexed relative file path (e.g. `pkg/indexer/facade.go`) |
+| `--workspace <name>` | Fan out search across all repos in workspace (`[root]` is ignored) |
 | `--no-refresh` | Skip automatic re-index |
 | `--json` | Output as JSON |
 
@@ -148,7 +148,7 @@ mimir report <root> [--no-refresh] [--json]
 Query call-reference table. Use `--hotspot` for most-called symbols.
 
 ```bash
-mimir refs <root> [--caller <name>] [--callee <name>] [--file <path>]
+mimir refs [root] [--caller <name>] [--callee <name>] [--file <path>]
                   [--hotspot] [--limit N]
                   [--workspace <name>] [--no-refresh] [--json]
 ```
