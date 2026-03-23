@@ -1,12 +1,9 @@
 package indexer
 
-// lookup_filepath_regression_test.go — demonstrates that --file with a
-// directory prefix does not work when combined with --type.
-//
-// Bug: SearchQuery.FilePath uses exact match (=) in SQL, so passing a
-// directory prefix like "backend/app/models" returns nothing because no
-// file_path equals that string exactly. The deadcode query already uses
-// LIKE '%...%' for the same field — the search queries should do the same.
+// lookup_filepath_regression_test.go — regression tests for substring-based
+// file path filtering. Previously, SearchQuery.FilePath used exact match (=)
+// in SQL, so directory prefixes and filename substrings returned no results.
+// Now uses INSTR() for literal substring matching.
 
 import (
 	"database/sql"
@@ -83,8 +80,8 @@ func TestSearchSymbols_FilePathSubstring_Alone(t *testing.T) {
 // TestSearchSymbols_FilePathSubstring_WithType verifies that --file with a
 // directory prefix COMBINED with --type returns the correct subset.
 //
-// BUG: This currently fails because file_path uses exact match (=) instead
-// of substring match (LIKE '%%...%%').
+// Regression: previously file_path used exact match (=) instead of
+// substring match, so directory prefixes like this returned nothing.
 func TestSearchSymbols_FilePathSubstring_WithType(t *testing.T) {
 	db := seedDirectoryDB(t)
 
