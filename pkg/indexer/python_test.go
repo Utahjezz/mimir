@@ -217,6 +217,122 @@ func TestGetSymbols_Python_InitMethod(t *testing.T) {
 	}
 }
 
+// --- decorated function definitions (FastAPI route handlers, etc.) ---
+
+func TestGetSymbols_Python_DecoratedFunctions(t *testing.T) {
+	const fixture = `from fastapi import APIRouter
+
+router = APIRouter()
+
+@router.post("/invoices")
+async def create_invoice(data: dict):
+    pass
+
+@router.get("/invoices/{id}")
+async def get_invoice(invoice_id: int):
+    pass
+
+def plain_helper():
+    pass
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("routes.py", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := byNameMap(symbols)
+
+	for _, name := range []string{"create_invoice", "get_invoice", "plain_helper"} {
+		s, ok := byName[name]
+		if !ok {
+			t.Errorf("symbol %q not found", name)
+			continue
+		}
+		if s.Type != Function {
+			t.Errorf("symbol %q: got type %q, want %q", name, s.Type, Function)
+		}
+	}
+}
+
+// --- decorated class definitions ---
+
+func TestGetSymbols_Python_DecoratedClass(t *testing.T) {
+	const fixture = `from dataclasses import dataclass
+
+@dataclass
+class Item:
+    name: str
+    price: float
+
+class PlainClass:
+    pass
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("models.py", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := byNameMap(symbols)
+
+	for _, name := range []string{"Item", "PlainClass"} {
+		s, ok := byName[name]
+		if !ok {
+			t.Errorf("symbol %q not found", name)
+			continue
+		}
+		if s.Type != Class {
+			t.Errorf("symbol %q: got type %q, want %q", name, s.Type, Class)
+		}
+	}
+}
+
+// --- decorated method definitions (@staticmethod, @classmethod, etc.) ---
+
+func TestGetSymbols_Python_DecoratedMethods(t *testing.T) {
+	const fixture = `class Service:
+    def regular_method(self):
+        pass
+
+    @staticmethod
+    def static_helper():
+        pass
+
+    @classmethod
+    def from_config(cls, config):
+        pass
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("service.py", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := byNameMap(symbols)
+
+	cases := []struct {
+		name     string
+		wantType SymbolType
+	}{
+		{"Service", Class},
+		{"regular_method", Method},
+		{"static_helper", Method},
+		{"from_config", Method},
+	}
+
+	for _, tc := range cases {
+		s, ok := byName[tc.name]
+		if !ok {
+			t.Errorf("symbol %q not found", tc.name)
+			continue
+		}
+		if s.Type != tc.wantType {
+			t.Errorf("symbol %q: got type %q, want %q", tc.name, s.Type, tc.wantType)
+		}
+	}
+}
+
 // --- unrecognised extension returns an error ---
 
 func TestGetSymbols_Python_UnknownExtension(t *testing.T) {
