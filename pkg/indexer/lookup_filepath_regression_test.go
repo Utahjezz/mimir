@@ -134,9 +134,9 @@ func TestSearchSymbols_FilePathSubstring_SingleFile(t *testing.T) {
 func TestSearchSymbols_FuzzyWithFilePathSubstring(t *testing.T) {
 	db := seedDirectoryDB(t)
 
-	// fuzzy "us*" + --file "backend/app/models" → should match "User"
+	// fuzzy "disc*" + --file "backend/app/models" → should match "discount" only
 	got, err := SearchSymbols(db, SearchQuery{
-		FuzzyName: "us*",
+		FuzzyName: "disc*",
 		FilePath:  "backend/app/models",
 	})
 	if err != nil {
@@ -144,9 +144,9 @@ func TestSearchSymbols_FuzzyWithFilePathSubstring(t *testing.T) {
 	}
 
 	if len(got) != 1 {
-		t.Fatalf("FuzzyName + FilePath prefix: expected 1 result (User), got %d: %v", len(got), got)
+		t.Fatalf("FuzzyName + FilePath prefix: expected 1 result (discount), got %d: %v", len(got), got)
 	}
-	if got[0].Name != "User" {
-		t.Errorf("Name: got %q, want %q", got[0].Name, "User")
+	if got[0].Name != "discount" {
+		t.Errorf("Name: got %q, want %q", got[0].Name, "discount")
 	}
 }

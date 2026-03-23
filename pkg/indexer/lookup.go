@@ -36,7 +36,7 @@ type SearchQuery struct {
 	// Zero value means no type filter.
 	Type SymbolType
 
-	// FilePath filters to symbols belonging to this exact file path.
+	// FilePath filters results to symbols in files whose path contains this substring.
 	FilePath string
 }
 
@@ -123,8 +123,8 @@ func searchSymbolsSQL(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 	}
 
 	if q.FilePath != "" {
-		conds = append(conds, "file_path = ?")
-		args = append(args, q.FilePath)
+		conds = append(conds, "file_path LIKE ?")
+		args = append(args, "%"+q.FilePath+"%")
 	}
 
 	query := base
@@ -188,8 +188,8 @@ func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 	}
 
 	if q.FilePath != "" {
-		conds = append(conds, "s.file_path = ?")
-		args = append(args, q.FilePath)
+		conds = append(conds, "s.file_path LIKE ?")
+		args = append(args, "%"+q.FilePath+"%")
 	}
 
 	query := `SELECT s.file_path, s.name, s.type, s.start_line, s.end_line, s.parent
