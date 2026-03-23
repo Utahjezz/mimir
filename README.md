@@ -288,10 +288,10 @@ mimir --refresh-threshold=5m  search . --name "Foo"   # re-index at most once pe
 | Language | Extensions |
 |----------|-----------|
 | Go | `.go` |
-| JavaScript | `.js` `.mjs` `.cjs` |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` |
 | TypeScript | `.ts` `.mts` `.cts` |
 | TSX | `.tsx` |
-| Python | `.py` |
+| Python | `.py` `.pyw` |
 | C# | `.cs` |
 
 Files with any other extension are silently skipped.
