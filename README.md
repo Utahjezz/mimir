@@ -379,6 +379,18 @@ pkg/workspace/          ← workspace library: store, config, repository, index
 
 ---
 
+## Claude Code Skill
+
+Mimir ships with a [Claude Code](https://claude.com/claude-code) skill so that Claude can use mimir to explore any codebase. After installing the binary, run:
+
+```bash
+bash skills/install.sh
+```
+
+This copies the skill to `~/.claude/skills/mimir/`, making `/mimir` available in every Claude Code session — no Vercel Marketplace required.
+
+---
+
 ## License
 
 MIT
