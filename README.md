@@ -26,11 +26,25 @@ mimir dead ./myrepo --unexported
 
 ## Installation
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew install --cask Utahjezz/tap/mimir
+```
+
+To update:
+
+```bash
+brew upgrade --cask mimir
+```
+
+### Go install
+
 ```bash
 go install github.com/Utahjezz/mimir/cmd/mimir@latest
 ```
 
-Or build from source:
+### Build from source
 
 ```bash
 git clone https://github.com/Utahjezz/mimir
