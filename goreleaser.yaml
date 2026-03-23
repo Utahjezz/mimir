@@ -48,6 +48,23 @@ archives:
       - LICENSE
       - README.md
 
+brews:
+  - name: mimir
+    repository:
+      owner: Utahjezz
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    homepage: "https://github.com/Utahjezz/mimir"
+    description: "Language-agnostic code indexer using tree-sitter and SQLite"
+    license: "MIT"
+    install: |
+      bin.install "mimir"
+    test: |
+      system "#{bin}/mimir", "--version"
+
 checksum:
   name_template: 'checksums.txt'
 
