@@ -48,7 +48,7 @@ archives:
       - LICENSE
       - README.md
 
-brews:
+homebrew_casks:
   - name: mimir
     repository:
       owner: Utahjezz
@@ -59,11 +59,14 @@ brews:
       email: bot@goreleaser.com
     homepage: "https://github.com/Utahjezz/mimir"
     description: "Language-agnostic code indexer using tree-sitter and SQLite"
-    license: "MIT"
-    install: |
-      bin.install "mimir"
-    test: |
-      system "#{bin}/mimir", "--version"
+    binaries:
+      - mimir
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/mimir"]
+          end
 
 checksum:
   name_template: 'checksums.txt'
