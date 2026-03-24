@@ -302,10 +302,10 @@ mimir --refresh-threshold=5m  search . --name "Foo"   # re-index at most once pe
 | Language | Extensions |
 |----------|-----------|
 | Go | `.go` |
-| JavaScript | `.js` `.mjs` `.cjs` |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` |
 | TypeScript | `.ts` `.mts` `.cts` |
 | TSX | `.tsx` |
-| Python | `.py` |
+| Python | `.py` `.pyw` |
 | C# | `.cs` |
 
 Files with any other extension are silently skipped.
@@ -390,6 +390,39 @@ pkg/indexer/            ← core: walker, parser, store, queries, facade
   languages/            ← per-language tree-sitter grammars + queries
 pkg/workspace/          ← workspace library: store, config, repository, index
 ```
+
+---
+
+## Claude Code Skill
+
+Mimir ships with a [Claude Code](https://claude.com/claude-code) skill so that Claude can use mimir to explore any codebase. After installing the binary, run:
+
+```bash
+bash skills/install.sh
+```
+
+This copies the skill to `~/.claude/skills/mimir/`, making `/mimir` available in every Claude Code session — no Vercel Marketplace required.
+
+### What the skill provides
+
+Once installed, Claude can use mimir commands directly during conversations. Type `/mimir` or describe what you want to explore:
+
+| Prompt | What Claude does |
+|--------|-----------------|
+| "index this repo" | `mimir index` + `mimir report` + `mimir tree` |
+| "find symbol X" | `mimir search --name` or `mimir symbol` |
+| "who calls this function?" | `mimir callers` with depth traversal |
+| "show dead code" | `mimir dead --unexported` |
+| "trace the call graph" | `mimir refs --caller` + `mimir callers` |
+| "explore this codebase" | Full orientation workflow (index → report → tree → hotspots) |
+
+### Supported workflows
+
+- **First-time orientation** — index, report, tree, and hotspot analysis
+- **Symbol lookup** — exact name, prefix, fuzzy, or dot-notation search
+- **Impact analysis** — trace callers and callees before refactoring
+- **Dead code audit** — find unexported symbols with no recorded callers
+- **Cross-repo exploration** — workspace commands for multi-repo projects
 
 ---
 
