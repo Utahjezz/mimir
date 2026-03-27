@@ -15,6 +15,7 @@ var (
 	workspaceLinksJSON      bool
 	workspaceLinksSrcSymbol string
 	workspaceLinksDstSymbol string
+	workspaceLinksCheck     bool
 )
 
 var workspaceLinksCmd = &cobra.Command{
@@ -75,6 +76,25 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Validate links if --check flag is set.
+	if workspaceLinksCheck {
+		for i := range links {
+			result, err := workspace.ValidateLink(db, &links[i])
+			if err != nil {
+				return fmt.Errorf("validation failed for link #%d: %w", links[i].ID, err)
+			}
+			// Transfer validation results to the link for output.
+			links[i].SrcValid = result.SrcValid
+			links[i].SrcFileValid = result.SrcFileValid
+			links[i].SrcActualFile = result.SrcActualFile
+			links[i].SrcError = result.SrcError
+			links[i].DstValid = result.DstValid
+			links[i].DstFileValid = result.DstFileValid
+			links[i].DstActualFile = result.DstActualFile
+			links[i].DstError = result.DstError
+		}
+	}
+
 	if workspaceLinksJSON {
 		if links == nil {
 			links = []workspace.Link{}
@@ -87,6 +107,7 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	brokenCount := 0
 	for _, l := range links {
 		fmt.Fprintf(cmd.OutOrStdout(), "#%-4d  %s (%s)\n       → %s (%s)\n",
 			l.ID,
@@ -99,6 +120,30 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 		for k, v := range l.Meta {
 			fmt.Fprintf(cmd.OutOrStdout(), "       %s=%s\n", k, v)
 		}
+		if workspaceLinksCheck {
+			if l.SrcError != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: %s\n", l.SrcError)
+				brokenCount++
+			} else if !l.SrcFileValid {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: moved from %s → %s\n", l.SrcFile, l.SrcActualFile)
+				brokenCount++
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: OK (%s)\n", l.SrcFile)
+			}
+			if l.DstError != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: %s\n", l.DstError)
+				brokenCount++
+			} else if !l.DstFileValid {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: moved from %s → %s\n", l.DstFile, l.DstActualFile)
+				brokenCount++
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: OK (%s)\n", l.DstFile)
+			}
+		}
+	}
+
+	if workspaceLinksCheck && brokenCount > 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "\n⚠ %d broken link(s) found. Run `mimir workspace unlink <id>` to remove.\n", brokenCount)
 	}
 
 	return nil

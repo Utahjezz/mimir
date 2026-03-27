@@ -50,4 +50,43 @@ type Link struct {
 	Note      string            `json:"note"`
 	CreatedAt time.Time         `json:"created_at"`
 	Meta      map[string]string `json:"meta,omitempty"`
+
+	// Validation fields populated when --check is used.
+	// These fields are only present in the JSON output when validation
+	// has been performed. They are not stored in the database.
+	SrcValid      bool   `json:"src_valid,omitempty"`
+	SrcFileValid  bool   `json:"src_file_valid,omitempty"`
+	SrcActualFile string `json:"src_actual_file,omitempty"`
+	SrcError      string `json:"src_error,omitempty"`
+	DstValid      bool   `json:"dst_valid,omitempty"`
+	DstFileValid  bool   `json:"dst_file_valid,omitempty"`
+	DstActualFile string `json:"dst_actual_file,omitempty"`
+	DstError      string `json:"dst_error,omitempty"`
+}
+
+// ValidationResult holds the outcome of validating a single link.
+// It preserves the original Link fields and adds validation-specific
+// diagnostics. It is not stored in the database.
+type ValidationResult struct {
+	Link
+
+	// SrcValid reports whether the source symbol was found in the src repo.
+	SrcValid bool
+	// SrcFileValid reports whether the symbol was found at the recorded path.
+	SrcFileValid bool
+	// SrcActualFile is the path where the symbol was actually found.
+	// If the symbol was not found, this is empty.
+	SrcActualFile string
+	// SrcError is a non-empty error message if validation could not complete
+	// (e.g., repo not found, index unavailable). Empty if validation succeeded.
+	SrcError string
+
+	// DstValid reports whether the destination symbol was found.
+	DstValid bool
+	// DstFileValid reports whether the symbol was found at the recorded path.
+	DstFileValid bool
+	// DstActualFile is the path where the symbol was actually found.
+	DstActualFile string
+	// DstError is a non-empty error message if validation could not complete.
+	DstError string
 }
