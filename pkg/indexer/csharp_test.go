@@ -320,6 +320,32 @@ namespace DataAccess {
 	}
 }
 
+func TestGetSymbols_CSharp_Namespace_AsParent(t *testing.T) {
+	const fixture = `
+namespace DataAccess {
+    public class UserRepository {
+        public void Save() {}
+    }
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("repo.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// UserRepository should have parent "DataAccess"
+	for _, s := range symbols {
+		if s.Name == "UserRepository" {
+			if s.Parent != "DataAccess" {
+				t.Errorf(`"UserRepository" parent: got %q, want %q`, s.Parent, "DataAccess")
+			}
+			return
+		}
+	}
+	t.Fatal(`symbol "UserRepository" not found`)
+}
+
 // --- line ranges are sensible ---
 
 func TestGetSymbols_CSharp_LineRanges(t *testing.T) {

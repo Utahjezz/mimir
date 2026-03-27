@@ -28,14 +28,19 @@ var parentTypes = map[SymbolType]bool{
 	Class:     true,
 	Interface: true,
 	Enum:      true,
+	Namespace: true,
 }
 
 // childTypes are the symbol types that receive a Parent when nested inside a
 // parentType. Function is included for constructors (C#/JS) but the assignment
 // only fires when the function's start line falls inside the parent's range.
 var childTypes = map[SymbolType]bool{
-	Method:   true,
-	Variable: true, // properties
+	Method:    true,
+	Variable:  true, // properties
+	Class:     true,
+	Interface: true,
+	Enum:      true,
+	Namespace: true,
 }
 
 // assignParents post-processes a flat symbol slice (as returned by tree-sitter
@@ -49,6 +54,7 @@ func assignParents(symbols []SymbolInfo) []SymbolInfo {
 	type frame struct {
 		name    string
 		endLine int
+		symType SymbolType
 	}
 
 	var stack []frame
@@ -66,7 +72,14 @@ func assignParents(symbols []SymbolInfo) []SymbolInfo {
 
 		// If this symbol is itself a container, push it.
 		if parentTypes[s.Type] {
-			stack = append(stack, frame{name: s.Name, endLine: s.EndLine})
+			frameName := s.Name
+			// FQN concatenation: namespace-on-namespace stacking builds the
+			// fully-qualified name so nested namespaces produce correct parent
+			// values (e.g. "Company.Platform.Services" for a class inside both).
+			if s.Type == Namespace && len(stack) > 0 && stack[len(stack)-1].symType == Namespace {
+				frameName = stack[len(stack)-1].name + "." + s.Name
+			}
+			stack = append(stack, frame{name: frameName, endLine: s.EndLine, symType: s.Type})
 		}
 	}
 
