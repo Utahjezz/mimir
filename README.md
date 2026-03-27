@@ -131,13 +131,14 @@ mimir dead ./myrepo --unexported
 ### `mimir imports` flags
 
 ```
---file    <str>   All imports found in this file (relative path as indexed)
---module  <str>   All files that import this module path
---json           Output as JSON array of {file_path, import_path, alias, line}
---no-refresh     Skip automatic re-index before querying
+--file       <str>   All imports found in this file (relative path as indexed)
+--module     <str>   All files that import this module path
+--workspace  <name>  Fan out across all repos in the named workspace
+--json               Output as JSON array of {file_path, import_path, alias, line}
+--no-refresh         Skip automatic re-index before querying
 ```
 
-With no filter flags, returns all recorded imports across the repo. Supported languages: Go, TypeScript, JavaScript, Python, C#.
+With no filter flags, returns all recorded imports across the repo. Supported languages: Go, TypeScript, TSX, JavaScript, Python, C#.
 
 ### Global flags (all commands)
 

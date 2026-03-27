@@ -180,6 +180,28 @@ func TestExtractImports_CSharp_Aliased(t *testing.T) {
 	t.Errorf("expected aliased import Alias='System.Collections', got %v", imports)
 }
 
+// --- ExtractImports: same-line deduplication ---
+
+// TestExtractImports_Python_SameLine verifies that multiple imports on the
+// same line (e.g. "import os, sys") are each preserved as distinct ImportSite
+// entries. The dedup key is (line, import_path), not line alone, so neither
+// entry should shadow the other.
+func TestExtractImports_Python_SameLine(t *testing.T) {
+	const src = `import os, sys
+`
+	imports, err := ExtractImports("python", []byte(src))
+	if err != nil {
+		t.Fatalf("ExtractImports Python same-line: %v", err)
+	}
+	paths := importPathSet(imports)
+	if !paths["os"] {
+		t.Errorf("expected 'os' in same-line import, got %v", imports)
+	}
+	if !paths["sys"] {
+		t.Errorf("expected 'sys' in same-line import, got %v", imports)
+	}
+}
+
 // --- ExtractImports: unsupported language ---
 
 func TestExtractImports_UnsupportedLanguage_ReturnsNil(t *testing.T) {

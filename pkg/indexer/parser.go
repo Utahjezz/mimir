@@ -212,9 +212,11 @@ func ExtractImports(lang string, code []byte) ([]ImportSite, error) {
 // @path capture (required) and the optional @alias capture.
 //
 // Because some languages emit both a plain pattern and an alias pattern for
-// the same node (e.g. Go import_spec with and without alias), we deduplicate
-// by line: when two matches produce the same line, the one that also carries
-// an @alias wins.
+// the same import (e.g. Go import_spec with and without alias), we deduplicate
+// by (line, import_path): when two matches produce the same (line, path) pair,
+// the one that also carries an @alias wins. Keying on both fields preserves
+// distinct imports that share a line (e.g. Python "import os, sys" or
+// semicolon-separated statements).
 //
 // The query is shared across goroutines; each call uses its own cursor.
 func runImportQuery(query *tree_sitter.Query, tree *tree_sitter.Tree, code []byte) ([]ImportSite, error) {
@@ -223,8 +225,15 @@ func runImportQuery(query *tree_sitter.Query, tree *tree_sitter.Tree, code []byt
 
 	matches := cursor.Matches(query, tree.RootNode(), code)
 
-	// Keyed by line so that an alias-bearing match overwrites a plain match.
-	seen := make(map[int]ImportSite)
+	type key struct {
+		line int
+		path string
+	}
+
+	// Keyed by (line, path) so that an alias-bearing match overwrites a plain
+	// match for the same import, while distinct imports on the same line are
+	// each preserved.
+	seen := make(map[key]ImportSite)
 
 	for {
 		match := matches.Next()
@@ -250,13 +259,15 @@ func runImportQuery(query *tree_sitter.Query, tree *tree_sitter.Tree, code []byt
 			continue
 		}
 
+		k := key{line, path}
+
 		// Overwrite only if this match adds new information (has an alias
-		// where the previous entry for this line did not).
-		if prev, exists := seen[line]; exists && prev.Alias != "" {
+		// where the previous entry for this (line, path) did not).
+		if prev, exists := seen[k]; exists && prev.Alias != "" {
 			continue
 		}
 
-		seen[line] = ImportSite{
+		seen[k] = ImportSite{
 			ImportPath: path,
 			Alias:      alias,
 			Line:       line,
