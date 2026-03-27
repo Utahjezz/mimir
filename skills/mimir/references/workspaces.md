@@ -59,8 +59,29 @@ mimir workspace link backend-a1b2c3d4 OrderService.PlaceOrder \
   --note "synchronous call on checkout"
 ```
 
-### `mimir workspace links [workspace] [--from <path>] [--src-symbol <name>] [--dst-symbol <name>] [--json]`
+### `mimir workspace links [workspace] [--from <path>] [--src-symbol <name>] [--dst-symbol <name>] [--check] [--json]`
 List links. Defaults to filtering by the repo containing the current working directory. To list all links, run from a directory that is not registered in the workspace.
+
+| Flag | Description |
+|------|-------------|
+| `--check` | Validate that symbols and file paths still exist in their respective repositories. Reports broken links (missing symbols or moved files). |
+| `--from <path>` | Filter links by source repository path |
+| `--src-symbol <name>` | Filter by source symbol name (exact match) |
+| `--dst-symbol <name>` | Filter by destination symbol name (exact match) |
+| `--json` | Output as JSON array |
+
+```bash
+# List all links with validation
+mimir workspace links --check
+
+# Output when broken links found:
+# #1   MyFunc (repo-id)
+#      → OtherFunc (repo-id)
+#      [CHECK] src: symbol "MyFunc" not found in repo
+#      [CHECK] dst: OK (pkg.go)
+#
+# ⚠ 1 broken link(s) found. Run `mimir workspace unlink <id>` to remove.
+```
 
 ### `mimir workspace unlink <id> [workspace]`
 Remove a link by numeric ID (shown in `workspace links` output).

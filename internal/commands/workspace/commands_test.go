@@ -319,22 +319,24 @@ func runLinkCmd(t *testing.T, args []string, srcFile, dstFile, note string, meta
 // runLinksCmd invokes runWorkspaceLinks after setting flag globals.
 func runLinksCmd(t *testing.T, args []string, from string, asJSON bool) (string, error) {
 	t.Helper()
-	return runLinksCmdFull(t, args, from, "", "", asJSON)
+	return runLinksCmdFull(t, args, from, "", "", asJSON, false)
 }
 
-// runLinksCmdFull is the full helper that exposes --src-symbol and --dst-symbol.
-func runLinksCmdFull(t *testing.T, args []string, from, srcSymbol, dstSymbol string, asJSON bool) (string, error) {
+// runLinksCmdFull is the full helper that exposes --src-symbol, --dst-symbol, and --check.
+func runLinksCmdFull(t *testing.T, args []string, from, srcSymbol, dstSymbol string, asJSON, withCheck bool) (string, error) {
 	t.Helper()
 	defer func() {
 		workspaceLinksFrom = ""
 		workspaceLinksJSON = false
 		workspaceLinksSrcSymbol = ""
 		workspaceLinksDstSymbol = ""
+		workspaceLinksCheck = false
 	}()
 	workspaceLinksFrom = from
 	workspaceLinksJSON = asJSON
 	workspaceLinksSrcSymbol = srcSymbol
 	workspaceLinksDstSymbol = dstSymbol
+	workspaceLinksCheck = withCheck
 
 	out := &bytes.Buffer{}
 	cmd := newCmd()
@@ -746,7 +748,7 @@ func TestRunWorkspaceLinks_FilterSrcSymbol(t *testing.T) {
 	}
 
 	// Act: filter by src symbol "F" — must find it
-	out, err := runLinksCmdFull(t, []string{"srcsymws"}, "", "F", "", false)
+	out, err := runLinksCmdFull(t, []string{"srcsymws"}, "", "F", "", false, false)
 
 	// Assert
 	if err != nil {
@@ -768,7 +770,7 @@ func TestRunWorkspaceLinks_FilterSrcSymbol_NoMatch(t *testing.T) {
 	}
 
 	// Act
-	out, err := runLinksCmdFull(t, []string{"srcsymnomatch"}, "", "DoesNotExist", "", false)
+	out, err := runLinksCmdFull(t, []string{"srcsymnomatch"}, "", "DoesNotExist", "", false, false)
 
 	// Assert
 	if err != nil {
@@ -790,7 +792,7 @@ func TestRunWorkspaceLinks_FilterDstSymbol(t *testing.T) {
 	}
 
 	// Act
-	out, err := runLinksCmdFull(t, []string{"dstsymws"}, "", "", "F", false)
+	out, err := runLinksCmdFull(t, []string{"dstsymws"}, "", "", "F", false, false)
 
 	// Assert
 	if err != nil {
@@ -1114,5 +1116,120 @@ func TestRunWorkspaceDelete_ClearsCurrentWorkspace(t *testing.T) {
 	_, err := workspace.GetCurrentWorkspace()
 	if !errors.Is(err, workspace.ErrNoCurrentWorkspace) {
 		t.Errorf("expected ErrNoCurrentWorkspace after deleting active workspace, got: %v", err)
+	}
+}
+
+// --------------------------------------------------------------------------
+// workspace links --check
+// --------------------------------------------------------------------------
+
+// TestRunWorkspaceLinks_Check_Valid verifies that --check on a valid link
+// prints "[CHECK] src: OK" and "[CHECK] dst: OK" lines.
+func TestRunWorkspaceLinks_Check_Valid(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "checkvalidws")
+	if _, err := runLinkCmd(t, []string{src, "F", dst, "F", "checkvalidws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+
+	// Act
+	out, err := runLinksCmdFull(t, []string{"checkvalidws"}, "", "", "", false, true)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks --check: %v", err)
+	}
+	if !strings.Contains(out, "[CHECK] src: OK") {
+		t.Errorf("expected '[CHECK] src: OK' in output, got: %q", out)
+	}
+	if !strings.Contains(out, "[CHECK] dst: OK") {
+		t.Errorf("expected '[CHECK] dst: OK' in output, got: %q", out)
+	}
+}
+
+// TestRunWorkspaceLinks_Check_SymbolNotFound verifies that when a symbol is
+// missing, --check prints an error message in the [CHECK] line.
+func TestRunWorkspaceLinks_Check_SymbolNotFound(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "checkmissingws")
+	// Create a link directly in the DB with a symbol that does NOT exist.
+	// (runLinkCmd validates symbols at creation time, so we bypass it.)
+	wsDB, err := workspace.OpenWorkspace("checkmissingws")
+	if err != nil {
+		t.Fatalf("OpenWorkspace: %v", err)
+	}
+	defer wsDB.Close()
+	_, err = workspace.CreateLink(wsDB, src, "NoSuchSymbol", "pkg.go", dst, "F", "pkg.go", "broken link")
+	if err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	// Act
+	out, err := runLinksCmdFull(t, []string{"checkmissingws"}, "", "", "", false, true)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks --check: %v", err)
+	}
+	if !strings.Contains(out, "[CHECK] src:") {
+		t.Errorf("expected '[CHECK] src:' in output, got: %q", out)
+	}
+	if !strings.Contains(out, "not found") {
+		t.Errorf("expected 'not found' in src check output, got: %q", out)
+	}
+	if !strings.Contains(out, "⚠ 1 broken link(s) found. Run `mimir workspace unlink <id>` to remove.") {
+		t.Errorf("expected broken link summary, got: %q", out)
+	}
+}
+
+// TestRunWorkspaceLinks_Check_WithoutFlag_NoCheckOutput verifies that omitting
+// --check does NOT print any [CHECK] lines.
+func TestRunWorkspaceLinks_Check_WithoutFlag_NoCheckOutput(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "nocheckws")
+	if _, err := runLinkCmd(t, []string{src, "F", dst, "F", "nocheckws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+
+	// Act: withCheck = false
+	out, err := runLinksCmdFull(t, []string{"nocheckws"}, "", "", "", false, false)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks without --check: %v", err)
+	}
+	if strings.Contains(out, "[CHECK]") {
+		t.Errorf("expected no '[CHECK]' output without flag, got: %q", out)
+	}
+}
+
+// TestRunWorkspaceLinks_Check_JSON_ValidationFields verifies that --check --json
+// includes validation fields in the output.
+func TestRunWorkspaceLinks_Check_JSON_ValidationFields(t *testing.T) {
+	// Arrange
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	src, dst := setupLinkedWorkspace(t, "checkjsonws")
+	if _, err := runLinkCmd(t, []string{src, "F", dst, "F", "checkjsonws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+
+	// Act
+	out, err := runLinksCmdFull(t, []string{"checkjsonws"}, "", "", "", true, true)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks --check --json: %v", err)
+	}
+	if !strings.Contains(out, `"src_valid"`) {
+		t.Errorf("expected 'src_valid' field in JSON output, got: %q", out)
+	}
+	if !strings.Contains(out, `"dst_valid"`) {
+		t.Errorf("expected 'dst_valid' field in JSON output, got: %q", out)
+	}
+	if !strings.Contains(out, `"src_file_valid"`) {
+		t.Errorf("expected 'src_file_valid' field in JSON output, got: %q", out)
 	}
 }

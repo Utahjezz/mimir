@@ -35,6 +35,7 @@ func Register(workspaceCmd *cobra.Command) {
 	workspaceLinksCmd.Flags().BoolVar(&workspaceLinksJSON, "json", false, "Output results as JSON")
 	workspaceLinksCmd.Flags().StringVar(&workspaceLinksSrcSymbol, "src-symbol", "", "Filter links by source symbol name (exact match)")
 	workspaceLinksCmd.Flags().StringVar(&workspaceLinksDstSymbol, "dst-symbol", "", "Filter links by destination symbol name (exact match)")
+	workspaceLinksCmd.Flags().BoolVar(&workspaceLinksCheck, "check", false, "Validate that symbols and file paths still exist in their respective repositories")
 	workspaceCmd.AddCommand(workspaceLinksCmd)
 
 	workspaceCmd.AddCommand(workspaceUnlinkCmd)

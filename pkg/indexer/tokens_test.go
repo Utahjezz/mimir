@@ -11,7 +11,7 @@ func TestSplitIdentifier(t *testing.T) {
 		want  []string
 	}{
 		// camelCase
-		{"useCesarinaPrimaryAddress", []string{"use", "cesarina", "primary", "address"}},
+		{"getUserPrimaryAddress", []string{"get", "user", "primary", "address"}},
 		// PascalCase
 		{"AddressBookEntity", []string{"address", "book", "entity"}},
 		// snake_case
@@ -51,7 +51,7 @@ func TestTokenizeQuery(t *testing.T) {
 		input string
 		want  []string
 	}{
-		{"cesarina address", []string{"cesarina", "address"}},
+		{"user address", []string{"user", "address"}},
 		{"  fetch  USER  ", []string{"fetch", "user"}},
 		// Deduplication
 		{"foo foo bar", []string{"foo", "bar"}},

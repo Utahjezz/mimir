@@ -10,8 +10,8 @@ import (
 //
 // Examples:
 //
-//	useCesarinaPrimaryAddress → [use cesarina primary address]
-//	AddressBookEntity         → [address book entity]
+//	getUserPrimaryAddress → [get user primary address]
+//	AddressBookEntity     → [address book entity]
 //	get_file_meta             → [get file meta]
 //	MAX_RETRY_COUNT           → [max retry count]
 //	parseHTTPRequest          → [parse http request]
