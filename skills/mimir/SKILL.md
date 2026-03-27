@@ -1,7 +1,7 @@
 ---
 name: mimir
 description: "Tree-sitter code indexer for exploring symbols, tracing call graphs, and detecting dead code. Use this skill whenever you need to understand a codebase structure, find where a function is defined, trace who calls what, search for symbols by name or pattern, detect unused code, or get a high-level overview of a repository. Trigger on: 'index this repo', 'find symbol X', 'who calls this function', 'show dead code', 'trace the call graph', 'explore this codebase', 'what symbols are in this file', 'show repo structure', or any codebase exploration task. Also use when navigating unfamiliar repos or before refactoring to understand impact."
-version: 1.1.0
+version: 1.2.0
 type: skill
 category: development
 tags:
@@ -30,7 +30,9 @@ metadata:
 
 # Mimir — Code Indexer & Explorer
 
-> Index source code with tree-sitter, persist to SQLite, then explore symbols, search, trace references, and detect dead code from the CLI.
+## Overview
+
+Index a repo once, then query symbols, trace call graphs, search by name or fuzzy text, and detect dead code — all from a persistent SQLite index built by tree-sitter.
 
 ## Quick Start
 
@@ -56,6 +58,8 @@ mimir tree <path> --depth 3           # Directory structure with symbol counts
 | **Most-called symbols (hotspots)** | `mimir refs <root> --hotspot` | Great for finding load-bearing code |
 | **Dead code detection** | `mimir dead <root> --unexported` | `--unexported` reduces false positives |
 | **Quick file inspection** | `mimir symbols <file>` | No index needed — parses on the fly |
+
+**Not the right tool when:** you need full-text search across file *contents* (not symbol names/bodies) — use `grep`/`rg` for that. Mimir indexes symbols and call references, not raw line text.
 
 ## Supported Languages
 
@@ -103,11 +107,50 @@ mimir dead /path/to/repo --type function --file pkg/utils/
 ### Cross-repo exploration (workspaces)
 See `references/workspaces.md` for workspace commands (create, link, fan-out search).
 
+## Cross-Repo Link Obligation
+
+```
+AFTER EXPLORING ANY WORKSPACE: ASK THE USER BEFORE RUNNING THE LINK DISCOVERY PROTOCOL
+```
+
+**Only ask if:** a workspace exists and `mimir workspace show` returns at least 2 repos. If no workspace exists or it contains fewer than 2 repos, skip silently.
+
+When the conditions above are met, ask the user before proceeding:
+
+> "I can run the Link Discovery Protocol to find and declare cross-repo relationships
+> discovered during this session. This inspects outbound refs across all workspace repos.
+> Proceed?"
+
+**Ask when:**
+- You explored two or more repos in a workspace
+- You traced a symbol from one repo that resolves in another
+- You found naming patterns suggesting a caller/callee relationship across repos
+
+**If the user confirms:** run the protocol in `references/workspaces.md` → **Link Discovery Protocol**.
+
+**If the user declines:** briefly note any obvious candidates you already observed, so
+they can run the protocol themselves later. Do not silently discard what you found.
+
+**Red Flags — STOP and ask:**
+- "The relationship is obvious from context" — undeclared links don't exist in the index
+- "I only explored briefly" — even a brief exploration can surface a link worth declaring
+- Ending the session without having asked — there is no next time, future sessions start blind
+
 ## Important Caveats
 
 1. **Always index first** — all query commands need an existing index (except `symbols` and `symbol` in file mode)
 2. **Dead-code uses name-only matching** — false negatives possible for common names like `Open`, `Close`, `Error`. Use `--unexported` to reduce noise
 3. **Framework entry points show as "dead"** — route handlers, decorators, fixtures are called by frameworks, not directly in code. These are expected false positives
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Querying before indexing | Always run `mimir index <path>` first; `mimir symbols <file>` is the only command that works without an index |
+| Using `--name` for approximate matches | `--name` is exact. Use `--fuzzy` for partial/camelCase matches |
+| Treating dead-code results as definitive | `mimir dead` uses name-only matching — common names (`Open`, `Close`, `Error`) produce false negatives. Always review results manually |
+| Forgetting `--unexported` on dead-code runs | Without it, every exported symbol shows as "dead" even if called by external packages |
+| Skipping link declaration after workspace exploration | Cross-repo relationships found this session are gone next session if not declared with `mimir workspace link` |
 
 ## Full Command Reference
 

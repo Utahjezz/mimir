@@ -50,4 +50,30 @@ type Link struct {
 	Note      string            `json:"note"`
 	CreatedAt time.Time         `json:"created_at"`
 	Meta      map[string]string `json:"meta,omitempty"`
+
+	// Validation fields populated when --check is used.
+	// Pointer types allow omitempty to distinguish nil (not checked) from
+	// false/empty (checked but invalid), so JSON consumers can always tell
+	// whether --check was run.
+	SrcValid      *bool   `json:"src_valid,omitempty"`
+	SrcFileValid  *bool   `json:"src_file_valid,omitempty"`
+	SrcActualFile *string `json:"src_actual_file,omitempty"`
+	SrcError      *string `json:"src_error,omitempty"`
+	DstValid      *bool   `json:"dst_valid,omitempty"`
+	DstFileValid  *bool   `json:"dst_file_valid,omitempty"`
+	DstActualFile *string `json:"dst_actual_file,omitempty"`
+	DstError      *string `json:"dst_error,omitempty"`
 }
+
+// ValidationResult holds the outcome of validating a single link.
+// The Link field contains the original link data with validation fields
+// populated in-place. It is not stored in the database.
+type ValidationResult struct {
+	Link Link
+}
+
+// boolPtr returns a pointer to the given bool value.
+func boolPtr(b bool) *bool { return &b }
+
+// strPtr returns a pointer to the given string value.
+func strPtr(s string) *string { return &s }

@@ -180,7 +180,7 @@ mimir workspace show
 | `workspace show` | `mimir workspace show [workspace]` | List repositories in a workspace |
 | `workspace index` | `mimir workspace index [workspace] [flags]` | Index all repos in a workspace |
 | `workspace link` | `mimir workspace link <src-repo-id> <src-symbol> <dst-repo-id> <dst-symbol> [workspace]` | Declare a cross-repo symbol link |
-| `workspace links` | `mimir workspace links [--from <repo>] [--src-symbol <name>] [--dst-symbol <name>] [workspace]` | List cross-repo symbol links |
+| `workspace links` | `mimir workspace links [--from <repo>] [--src-symbol <name>] [--dst-symbol <name>] [--check] [workspace]` | List cross-repo symbol links |
 | `workspace unlink` | `mimir workspace unlink <id> [workspace]` | Remove a cross-repo symbol link by ID |
 
 ### `mimir workspace index` flags
@@ -206,6 +206,7 @@ mimir workspace show
 --from       <repo-id>   Filter links by source repo ID (defaults to cwd repo; lists all if cwd not in workspace)
 --src-symbol <name>      Filter links by source symbol name (exact match)
 --dst-symbol <name>      Filter links by destination symbol name (exact match)
+--check                  Validate that symbols and file paths still exist; reports broken links
 --json                   Output as JSON
 ```
 
@@ -264,6 +265,9 @@ mimir workspace links --from backend-a1b2c3d4 --dst-symbol PaymentClient.Charge
 # JSON output for scripting
 mimir workspace links --json | jq '.[].SrcSymbol'
 
+# Validate all links (check if symbols still exist and file paths match)
+mimir workspace links --check
+
 # Remove a link by ID
 mimir workspace unlink 3
 ```
@@ -275,6 +279,21 @@ mimir workspace unlink 3
       note: async via Kafka topic orders.placed
       protocol=grpc
       transport=kafka
+```
+
+**Link validation output (`--check`):**
+```
+#1    MyFunc (abc123)
+      → OtherFunc (def456)
+      [CHECK] src: OK (pkg/orders.go)
+      [CHECK] dst: OK (pkg/payments.go)
+
+#2    MissingSymbol (abc123)
+      → OtherFunc (def456)
+      [CHECK] src: symbol "MissingSymbol" not found in repo
+      [CHECK] dst: OK (pkg/payments.go)
+
+⚠ 1 broken link(s) found. Run `mimir workspace unlink <id>` to remove.
 ```
 
 ---
