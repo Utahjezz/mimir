@@ -62,4 +62,16 @@ const Queries = `
 
 (delegate_declaration
   name: (identifier) @name) @type
+
+(namespace_declaration
+  name: (qualified_name) @name) @namespace
+
+(namespace_declaration
+  name: (identifier) @name) @namespace
+
+(file_scoped_namespace_declaration
+  name: (qualified_name) @name) @namespace
+
+(file_scoped_namespace_declaration
+  name: (identifier) @name) @namespace
 `

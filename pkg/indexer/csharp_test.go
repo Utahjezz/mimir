@@ -294,6 +294,32 @@ namespace MyApp {
 	_ = cases // used above individually
 }
 
+// --- namespace declarations ---
+
+func TestGetSymbols_CSharp_Namespace_Simple(t *testing.T) {
+	const fixture = `
+namespace DataAccess {
+    public class UserRepository {
+        public void Save() {}
+    }
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("repo.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := byNameMap(symbols)
+	s, ok := byName["DataAccess"]
+	if !ok {
+		t.Fatal(`symbol "DataAccess" not found`)
+	}
+	if s.Type != Namespace {
+		t.Errorf(`"DataAccess": got type %q, want %q`, s.Type, Namespace)
+	}
+}
+
 // --- line ranges are sensible ---
 
 func TestGetSymbols_CSharp_LineRanges(t *testing.T) {
