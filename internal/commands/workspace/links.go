@@ -83,15 +83,7 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return fmt.Errorf("validation failed for link #%d: %w", links[i].ID, err)
 			}
-			// Transfer validation results to the link for output.
-			links[i].SrcValid = result.SrcValid
-			links[i].SrcFileValid = result.SrcFileValid
-			links[i].SrcActualFile = result.SrcActualFile
-			links[i].SrcError = result.SrcError
-			links[i].DstValid = result.DstValid
-			links[i].DstFileValid = result.DstFileValid
-			links[i].DstActualFile = result.DstActualFile
-			links[i].DstError = result.DstError
+			links[i] = result.Link
 		}
 	}
 

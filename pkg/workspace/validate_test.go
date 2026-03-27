@@ -30,23 +30,23 @@ func TestValidateLink_Valid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateLink: %v", err)
 	}
-	if !result.SrcValid {
+	if !result.Link.SrcValid {
 		t.Errorf("SrcValid: got false, want true")
 	}
-	if !result.DstValid {
+	if !result.Link.DstValid {
 		t.Errorf("DstValid: got false, want true")
 	}
-	if !result.SrcFileValid {
-		t.Errorf("SrcFileValid: got false, want true (src file %q)", result.SrcActualFile)
+	if !result.Link.SrcFileValid {
+		t.Errorf("SrcFileValid: got false, want true (src file %q)", result.Link.SrcActualFile)
 	}
-	if !result.DstFileValid {
-		t.Errorf("DstFileValid: got false, want true (dst file %q)", result.DstActualFile)
+	if !result.Link.DstFileValid {
+		t.Errorf("DstFileValid: got false, want true (dst file %q)", result.Link.DstActualFile)
 	}
-	if result.SrcError != "" {
-		t.Errorf("SrcError: got %q, want empty", result.SrcError)
+	if result.Link.SrcError != "" {
+		t.Errorf("SrcError: got %q, want empty", result.Link.SrcError)
 	}
-	if result.DstError != "" {
-		t.Errorf("DstError: got %q, want empty", result.DstError)
+	if result.Link.DstError != "" {
+		t.Errorf("DstError: got %q, want empty", result.Link.DstError)
 	}
 }
 
@@ -73,13 +73,13 @@ func TestValidateLink_SymbolNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateLink: %v", err)
 	}
-	if result.SrcValid {
+	if result.Link.SrcValid {
 		t.Errorf("SrcValid: got true, want false")
 	}
-	if result.SrcError == "" {
+	if result.Link.SrcError == "" {
 		t.Errorf("SrcError: got empty, want non-empty error about missing symbol")
 	}
-	if result.SrcFileValid {
+	if result.Link.SrcFileValid {
 		t.Errorf("SrcFileValid: got true, want false (cannot check path when symbol missing)")
 	}
 }
@@ -107,10 +107,10 @@ func TestValidateLink_DstSymbolNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateLink: %v", err)
 	}
-	if result.DstValid {
+	if result.Link.DstValid {
 		t.Errorf("DstValid: got true, want false")
 	}
-	if result.DstError == "" {
+	if result.Link.DstError == "" {
 		t.Errorf("DstError: got empty, want non-empty error about missing symbol")
 	}
 }
@@ -139,7 +139,7 @@ func TestValidateLink_RepoNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateLink: %v", err)
 	}
-	if result.SrcError == "" {
+	if result.Link.SrcError == "" {
 		t.Errorf("SrcError: got empty, want error about repo not found")
 	}
 }

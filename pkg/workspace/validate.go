@@ -21,24 +21,24 @@ func ValidateLink(db *sql.DB, link *Link) (*ValidationResult, error) {
 	// Look up repository paths.
 	srcRepoPath, err := repoPathFromID(db, link.SrcRepoID)
 	if err != nil {
-		result.SrcError = fmt.Sprintf("cannot resolve src repo: %v", err)
+		result.Link.SrcError = fmt.Sprintf("cannot resolve src repo: %v", err)
 	} else {
 		srcActual, srcErr := validateSymbolInRepo(srcRepoPath, link.SrcSymbol, link.SrcFile)
-		result.SrcActualFile = srcActual
-		result.SrcError = srcErr
-		result.SrcValid = srcErr == ""
-		result.SrcFileValid = srcErr == "" && srcActual == link.SrcFile
+		result.Link.SrcActualFile = srcActual
+		result.Link.SrcError = srcErr
+		result.Link.SrcValid = srcErr == ""
+		result.Link.SrcFileValid = srcErr == "" && srcActual == link.SrcFile
 	}
 
 	dstRepoPath, err := repoPathFromID(db, link.DstRepoID)
 	if err != nil {
-		result.DstError = fmt.Sprintf("cannot resolve dst repo: %v", err)
+		result.Link.DstError = fmt.Sprintf("cannot resolve dst repo: %v", err)
 	} else {
 		dstActual, dstErr := validateSymbolInRepo(dstRepoPath, link.DstSymbol, link.DstFile)
-		result.DstActualFile = dstActual
-		result.DstError = dstErr
-		result.DstValid = dstErr == ""
-		result.DstFileValid = dstErr == "" && dstActual == link.DstFile
+		result.Link.DstActualFile = dstActual
+		result.Link.DstError = dstErr
+		result.Link.DstValid = dstErr == ""
+		result.Link.DstFileValid = dstErr == "" && dstActual == link.DstFile
 	}
 
 	return result, nil
