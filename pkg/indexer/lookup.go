@@ -49,7 +49,9 @@ type SearchQuery struct {
 //   - "*.method"  → Parent="*",      Name="method"
 //   - "Class.m"   → if from NameLike: Parent="Class", NameLike="m"
 func ParseDotNotation(q SearchQuery) SearchQuery {
-	if dot := strings.IndexByte(q.Name, '.'); dot >= 0 {
+	// LastIndexByte so that FQN inputs like "A.B.C" split into parent="A.B", name="C"
+	// rather than parent="A", name="B.C" (which the old IndexByte produced).
+	if dot := strings.LastIndexByte(q.Name, '.'); dot >= 0 {
 		parent := q.Name[:dot]
 		name := q.Name[dot+1:]
 		q.Parent = parent
@@ -60,7 +62,7 @@ func ParseDotNotation(q SearchQuery) SearchQuery {
 		}
 		return q
 	}
-	if dot := strings.IndexByte(q.NameLike, '.'); dot >= 0 {
+	if dot := strings.LastIndexByte(q.NameLike, '.'); dot >= 0 {
 		parent := q.NameLike[:dot]
 		name := q.NameLike[dot+1:]
 		q.Parent = parent

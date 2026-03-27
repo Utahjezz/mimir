@@ -314,6 +314,38 @@ func TestSearchSymbols_DotNotation_NoMatchWrongParent(t *testing.T) {
 	}
 }
 
+func TestParseDotNotation_LastDotSplit(t *testing.T) {
+	cases := []struct {
+		input      SearchQuery
+		wantParent string
+		wantName   string
+	}{
+		// Single dot — unchanged behavior
+		{SearchQuery{Name: "Server.serve"}, "Server", "serve"},
+		// FQN — splits on last dot
+		{SearchQuery{Name: "Company.Platform.Services.*"}, "Company.Platform.Services", ""},
+		{SearchQuery{Name: "A.B.C"}, "A.B", "C"},
+		// Wildcard parent — unchanged
+		{SearchQuery{Name: "*.serve"}, "*", "serve"},
+		// NameLike FQN
+		{SearchQuery{NameLike: "Company.Platform.Ser"}, "Company.Platform", "Ser"},
+	}
+
+	for _, tc := range cases {
+		got := ParseDotNotation(tc.input)
+		if got.Parent != tc.wantParent {
+			t.Errorf("ParseDotNotation(%+v) Parent: got %q, want %q", tc.input, got.Parent, tc.wantParent)
+		}
+		name := got.Name
+		if name == "" {
+			name = got.NameLike
+		}
+		if name != tc.wantName {
+			t.Errorf("ParseDotNotation(%+v) Name: got %q, want %q", tc.input, name, tc.wantName)
+		}
+	}
+}
+
 // --- FTS5 fuzzy search ---
 
 func TestSearchSymbols_FuzzyPartialWord(t *testing.T) {
