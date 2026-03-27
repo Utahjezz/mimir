@@ -141,7 +141,7 @@ func searchSymbolsSQL(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 //
 // When the query contains no FTS5 operators (* " : ^), each query word is split
 // via splitIdentifier and matched against the name_tokens column so that, for
-// example, "cesarina address" matches useCesarinaPrimaryAddress. A trailing *
+// example, "user address" matches getUserPrimaryAddress. A trailing *
 // is appended to every token so prefix matching still works (e.g. "addr").
 //
 // When the query already contains FTS5 operators the raw query is forwarded
@@ -156,8 +156,8 @@ func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 		ftsQuery = q.FuzzyName
 	} else {
 		// Expand each query word to match against name_tokens OR body_snippet.
-		// "cesarina address" →
-		//   "(name_tokens : cesarina* OR body_snippet : cesarina*) AND
+		// "user address" →
+		//   "(name_tokens : user* OR body_snippet : user*) AND
 		//    (name_tokens : address*  OR body_snippet : address*)"
 		words := tokenizeQuery(q.FuzzyName)
 		if len(words) == 0 {
