@@ -42,8 +42,9 @@ const TSXCallQueries = CallQueries + `
 //   - named imports:         import { A, B } from 'mod'→ path="mod", alias=""
 //   - namespace import:      import * as ns from 'mod' → path="mod", alias=""
 //
-// Each match yields a @path capture (the string_fragment of the module specifier).
-// Alias resolution is handled at extraction time from the import_clause subtree.
+// Each match yields only a @path capture (the string_fragment of the module specifier).
+// Aliases (the locally-bound name) are not captured; alias is always "".
+// To add alias support, extend this query with @alias captures per import form.
 const ImportQueries = `
 (import_statement
   source: (string
