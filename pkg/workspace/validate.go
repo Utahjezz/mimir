@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,17 +13,24 @@ import (
 // in their respective repositories. It opens each repo's index and searches
 // for the symbols to verify they are present and located at the recorded paths.
 //
-// Returns a populated ValidationResult with the results. The original Link
-// data is preserved in result.Link.
+// A non-nil error is returned only for unrecoverable workspace-level failures
+// (e.g. the repositories table cannot be queried). Link-level problems — repo
+// not registered, symbol not found, ambiguous symbol — are recorded in the
+// SrcError/DstError fields of the result and do not cause a non-nil error.
+//
+// The original Link data is preserved in result.Link.
 func ValidateLink(db *sql.DB, link *Link) (*ValidationResult, error) {
 	result := &ValidationResult{
 		Link: *link,
 	}
 
-	// Look up repository paths.
+	// Look up source repository path.
 	srcRepoPath, err := repoPathFromID(db, link.SrcRepoID)
 	if err != nil {
-		result.Link.SrcError = strPtr(fmt.Sprintf("cannot resolve src repo: %v", err))
+		if isDBError(err) {
+			return nil, fmt.Errorf("cannot query workspace for src repo: %w", unwrapDBError(err))
+		}
+		result.Link.SrcError = strPtr(err.Error())
 	} else {
 		srcActual, srcErr := validateSymbolInRepo(srcRepoPath, link.SrcSymbol, link.SrcFile)
 		result.Link.SrcActualFile = strPtr(srcActual)
@@ -31,9 +39,13 @@ func ValidateLink(db *sql.DB, link *Link) (*ValidationResult, error) {
 		result.Link.SrcFileValid = boolPtr(srcErr == "" && srcActual == link.SrcFile)
 	}
 
+	// Look up destination repository path.
 	dstRepoPath, err := repoPathFromID(db, link.DstRepoID)
 	if err != nil {
-		result.Link.DstError = strPtr(fmt.Sprintf("cannot resolve dst repo: %v", err))
+		if isDBError(err) {
+			return nil, fmt.Errorf("cannot query workspace for dst repo: %w", unwrapDBError(err))
+		}
+		result.Link.DstError = strPtr(err.Error())
 	} else {
 		dstActual, dstErr := validateSymbolInRepo(dstRepoPath, link.DstSymbol, link.DstFile)
 		result.Link.DstActualFile = strPtr(dstActual)
@@ -45,12 +57,34 @@ func ValidateLink(db *sql.DB, link *Link) (*ValidationResult, error) {
 	return result, nil
 }
 
+// dbError wraps a workspace DB failure so ValidateLink can distinguish it from
+// a link-level not-found error returned by repoPathFromID.
+type dbError struct{ cause error }
+
+func (e *dbError) Error() string { return e.cause.Error() }
+func (e *dbError) Unwrap() error { return e.cause }
+
+func isDBError(err error) bool {
+	var t *dbError
+	return errors.As(err, &t)
+}
+
+func unwrapDBError(err error) error {
+	var t *dbError
+	if errors.As(err, &t) {
+		return t.cause
+	}
+	return err
+}
+
 // repoPathFromID looks up repoID in the workspace repositories table and
 // returns its stored filesystem path.
+// Returns a *dbError if the repositories table cannot be queried (unrecoverable),
+// or a plain error if the repo ID is simply not registered (link-level issue).
 func repoPathFromID(db *sql.DB, repoID string) (string, error) {
 	repos, err := ListRepositories(db)
 	if err != nil {
-		return "", fmt.Errorf("cannot list repositories: %w", err)
+		return "", &dbError{cause: fmt.Errorf("cannot list repositories: %w", err)}
 	}
 	for _, r := range repos {
 		if r.ID == repoID {
