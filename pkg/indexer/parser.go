@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"fmt"
+	"slices"
 	"unicode"
 	"unicode/utf8"
 
@@ -182,6 +183,101 @@ func ExtractCalls(lang string, code []byte) ([]CallSite, error) {
 	}
 
 	return calls, nil
+}
+
+// ExtractImports runs the import query for the given language name against
+// code and returns every import statement found.
+//
+// Languages that do not have a registered import query return nil, nil —
+// callers need not special-case them.
+// The function is goroutine-safe: compiled queries are shared read-only;
+// each call creates its own parser and cursor.
+func ExtractImports(lang string, code []byte) ([]ImportSite, error) {
+	def, ok := importLangMap[lang]
+	if !ok {
+		return nil, nil
+	}
+
+	parser := tree_sitter.NewParser()
+	parser.SetLanguage(def.language)
+
+	tree := parser.Parse(code, nil)
+	defer tree.Close()
+
+	return runImportQuery(def.compiledImportQuery, tree, code)
+}
+
+// runImportQuery executes a pre-compiled import query and returns one
+// ImportSite per matched @import capture. Within each match it reads the
+// @path capture (required) and the optional @alias capture.
+//
+// Because some languages emit both a plain pattern and an alias pattern for
+// the same node (e.g. Go import_spec with and without alias), we deduplicate
+// by line: when two matches produce the same line, the one that also carries
+// an @alias wins.
+//
+// The query is shared across goroutines; each call uses its own cursor.
+func runImportQuery(query *tree_sitter.Query, tree *tree_sitter.Tree, code []byte) ([]ImportSite, error) {
+	cursor := tree_sitter.NewQueryCursor()
+	defer cursor.Close()
+
+	matches := cursor.Matches(query, tree.RootNode(), code)
+
+	// Keyed by line so that an alias-bearing match overwrites a plain match.
+	seen := make(map[int]ImportSite)
+
+	for {
+		match := matches.Next()
+		if match == nil {
+			break
+		}
+
+		var path, alias string
+		var line int
+
+		for _, capture := range match.Captures {
+			capName := query.CaptureNames()[capture.Index]
+			switch capName {
+			case "path":
+				path = capture.Node.Utf8Text(code)
+				line = int(capture.Node.StartPosition().Row) + 1
+			case "alias":
+				alias = capture.Node.Utf8Text(code)
+			}
+		}
+
+		if path == "" {
+			continue
+		}
+
+		// Overwrite only if this match adds new information (has an alias
+		// where the previous entry for this line did not).
+		if prev, exists := seen[line]; exists && prev.Alias != "" {
+			continue
+		}
+
+		seen[line] = ImportSite{
+			ImportPath: path,
+			Alias:      alias,
+			Line:       line,
+		}
+	}
+
+	if len(seen) == 0 {
+		return nil, nil
+	}
+
+	imports := make([]ImportSite, 0, len(seen))
+	for _, imp := range seen {
+		imports = append(imports, imp)
+	}
+
+	// Sort by line for deterministic output.
+	slices.SortFunc(imports, func(a, b ImportSite) int {
+		return a.Line - b.Line
+	})
+
+	return imports, nil
 }
 
 // runCallQuery executes a pre-compiled call-site query and returns a CallSite

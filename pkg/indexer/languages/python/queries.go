@@ -31,6 +31,31 @@ const RefQueries = `
   value: (identifier) @ref)
 `
 
+// ImportQueries contains tree-sitter query patterns for Python import extraction.
+// Matches import_statement and import_from_statement nodes:
+//   - plain import:          import os                  → path="os", alias=""
+//   - aliased import:        import os as op_sys        → path="os", alias="op_sys"
+//   - from import:           from os import path        → path="os", alias=""
+//   - from relative import:  from . import something    → path=".", alias=""
+//
+// Each match yields a @path capture (dotted_name or relative_import text) and
+// an optional @alias capture (the identifier after 'as').
+const ImportQueries = `
+(import_statement
+  (dotted_name) @path) @import
+
+(import_statement
+  (aliased_import
+    (dotted_name) @path
+    (identifier) @alias)) @import
+
+(import_from_statement
+  module_name: (dotted_name) @path) @import
+
+(import_from_statement
+  module_name: (relative_import) @path) @import
+`
+
 // Queries contains tree-sitter query patterns for Python symbol extraction.
 // Covers:
 //   - top-level function definitions (def foo — direct children of module)

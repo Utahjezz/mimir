@@ -307,6 +307,64 @@ export const refs = tool({
 })
 
 // ---------------------------------------------------------------------------
+// mimir – imports
+// ---------------------------------------------------------------------------
+export const imports = tool({
+  description:
+    "Query the imports table of the mimir index. " +
+    "Use --file to list all import statements in a specific source file, or " +
+    "--module to find every file that imports a particular module/package path. " +
+    "With no flags, all indexed import statements are returned. " +
+    "Agent use-cases: dependency resolution (which package does symbol X come " +
+    "from?), module boundary analysis (which files depend on an internal package?), " +
+    "refactoring impact (what breaks if 'pkg/old' is renamed or removed?). " +
+    "Requires the index to exist. " +
+    "Auto-refreshes the index if it is older than --refresh-threshold (default 10s); " +
+    "pass no_refresh=true to skip the walk entirely.",
+  args: {
+    root: tool.schema
+      .string()
+      .describe("Absolute or relative path to the repository root"),
+    file: tool.schema
+      .string()
+      .optional()
+      .describe("Filter by source file path — list all imports in this file"),
+    module: tool.schema
+      .string()
+      .optional()
+      .describe("Filter by imported module/package path — find all files that import this module"),
+    json: tool.schema
+      .boolean()
+      .optional()
+      .describe("Return results as JSON array of ImportRow objects"),
+    no_refresh: tool.schema
+      .boolean()
+      .optional()
+      .describe("Skip the automatic re-index check before querying"),
+    refresh_threshold: tool.schema
+      .string()
+      .optional()
+      .describe("Override the minimum index age that triggers auto-refresh (Go duration string, e.g. '10s', '2m', '0s')"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe("Fan out query across all repos in this workspace (root is ignored when set)"),
+  },
+  async execute(args, _context) {
+    const bin = mimirBin()
+    const globalFlags: string[] = []
+    if (args.refresh_threshold) globalFlags.push("--refresh-threshold", args.refresh_threshold)
+    const flags: string[] = []
+    if (args.file)       flags.push("--file",      args.file)
+    if (args.module)     flags.push("--module",    args.module)
+    if (args.json)       flags.push("--json")
+    if (args.no_refresh) flags.push("--no-refresh")
+    if (args.workspace)  flags.push("--workspace", args.workspace)
+    return run(Bun.$`${bin} ${globalFlags} imports ${args.root} ${flags}`)
+  },
+})
+
+// ---------------------------------------------------------------------------
 // mimir – tree
 // ---------------------------------------------------------------------------
 export const tree = tool({

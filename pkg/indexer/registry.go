@@ -160,6 +160,84 @@ func buildCallLangMap() map[string]callDefinition {
 // callLangMap is the global language-name → callDefinition lookup.
 var callLangMap = buildCallLangMap()
 
+// importDefinition maps a human-readable language name to the grammar and
+// import query string used by ExtractImports.
+type importDefinition struct {
+	language            *tree_sitter.Language
+	importQuery         string
+	compiledImportQuery *tree_sitter.Query // compiled once at startup; never closed
+}
+
+// registeredImportLanguages lists all languages that support import extraction.
+var registeredImportLanguages = []struct {
+	name string
+	importDefinition
+}{
+	{
+		name: "go",
+		importDefinition: importDefinition{
+			language:    golang.Language,
+			importQuery: golang.ImportQueries,
+		},
+	},
+	{
+		name: "javascript",
+		importDefinition: importDefinition{
+			language:    javascript.Language,
+			importQuery: javascript.ImportQueries,
+		},
+	},
+	{
+		name: "typescript",
+		importDefinition: importDefinition{
+			language:    typescript.Language,
+			importQuery: typescript.ImportQueries,
+		},
+	},
+	{
+		name: "tsx",
+		importDefinition: importDefinition{
+			language:    typescript.TSXLanguage,
+			importQuery: typescript.ImportQueries,
+		},
+	},
+	{
+		name: "python",
+		importDefinition: importDefinition{
+			language:    python.Language,
+			importQuery: python.ImportQueries,
+		},
+	},
+	{
+		name: "csharp",
+		importDefinition: importDefinition{
+			language:    csharp.Language,
+			importQuery: csharp.ImportQueries,
+		},
+	},
+}
+
+// buildImportLangMap builds a language-name → importDefinition lookup used by
+// ExtractImports. Queries are compiled once here and reused for every file.
+func buildImportLangMap() map[string]importDefinition {
+	m := make(map[string]importDefinition, len(registeredImportLanguages))
+	for _, def := range registeredImportLanguages {
+		id := def.importDefinition
+
+		iq, err := tree_sitter.NewQuery(id.language, id.importQuery)
+		if err != nil {
+			panic("mimir: failed to compile importQuery for " + def.name + ": " + err.Error())
+		}
+		id.compiledImportQuery = iq
+
+		m[def.name] = id
+	}
+	return m
+}
+
+// importLangMap is the global language-name → importDefinition lookup.
+var importLangMap = buildImportLangMap()
+
 func buildLangMap() map[string]langEntry {
 	langs := make(map[string]langEntry)
 	for _, def := range registeredLanguages {

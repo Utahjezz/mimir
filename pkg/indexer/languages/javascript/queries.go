@@ -36,6 +36,21 @@ const JSXCallQueries = CallQueries + `
   name: (identifier) @callee) @call
 `
 
+// ImportQueries contains tree-sitter query patterns for JavaScript import extraction.
+// Matches import_statement nodes:
+//   - side-effect import:    import 'mod'               → path="mod", alias=""
+//   - default import:        import X from 'mod'        → path="mod", alias=""
+//   - named imports:         import { A, B } from 'mod' → path="mod", alias=""
+//   - namespace import:      import * as ns from 'mod'  → path="mod", alias=""
+//
+// Each match yields a @path capture (the string_fragment of the module specifier).
+// Alias resolution is handled at extraction time from the import_clause subtree.
+const ImportQueries = `
+(import_statement
+  source: (string
+    (string_fragment) @path)) @import
+`
+
 // RefQueries captures identifiers used as values (not called directly) in:
 //   - object/array literal properties: { handler: myFn }
 //   - variable declarators: const f = myFn  /  let f = myFn  /  var f = myFn
@@ -55,11 +70,14 @@ const RefQueries = `
 `
 
 // Queries contains tree-sitter query patterns for JavaScript symbol extraction.
-// Covers: function declarations, var/let/const assignments, class declarations,
-// methods (including static/async), object shorthand methods,
-// export default function/class, and module.exports.x = function() assignments.
+// Covers: function declarations, generator functions (function* foo), var/let/const
+// assignments, class declarations, methods (including static/async), object shorthand
+// methods, export default function/class, and module.exports.x = function() assignments.
 const Queries = `
 (function_declaration
+  name: (identifier) @name) @function
+
+(generator_function_declaration
   name: (identifier) @name) @function
 
 (lexical_declaration

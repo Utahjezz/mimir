@@ -52,7 +52,10 @@ func runSymbols(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot parse file: %w", err)
 	}
 
-	if len(symbols) == 0 {
+	lang := indexer.ExtensionLanguage(filepath.Ext(path))
+	imports, _ := indexer.ExtractImports(lang, code) // non-fatal
+
+	if len(symbols) == 0 && len(imports) == 0 {
 		fmt.Fprintln(cmd.OutOrStdout(), "no symbols found")
 		return nil
 	}
@@ -60,6 +63,18 @@ func runSymbols(cmd *cobra.Command, args []string) error {
 	for _, s := range symbols {
 		fmt.Fprintf(cmd.OutOrStdout(), "%-12s %-40s %d-%d\n",
 			s.Type, s.Name, s.StartLine, s.EndLine)
+	}
+
+	if len(imports) > 0 {
+		fmt.Fprintln(cmd.OutOrStdout())
+		fmt.Fprintln(cmd.OutOrStdout(), "Imports:")
+		for _, imp := range imports {
+			if imp.Alias != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %-40s [%s]  line %d\n", imp.ImportPath, imp.Alias, imp.Line)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %-40s line %d\n", imp.ImportPath, imp.Line)
+			}
+		}
 	}
 
 	return nil

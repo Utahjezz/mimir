@@ -103,6 +103,17 @@ CREATE TABLE IF NOT EXISTS refs (
 CREATE INDEX IF NOT EXISTS idx_refs_caller_file ON refs(caller_file);
 CREATE INDEX IF NOT EXISTS idx_refs_caller_name ON refs(caller_name);
 CREATE INDEX IF NOT EXISTS idx_refs_callee_name ON refs(callee_name);
+
+CREATE TABLE IF NOT EXISTS imports (
+    id          INTEGER PRIMARY KEY,
+    file_path   TEXT    NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+    import_path TEXT    NOT NULL,
+    alias       TEXT    NOT NULL DEFAULT '',
+    line        INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_imports_file_path   ON imports(file_path);
+CREATE INDEX IF NOT EXISTS idx_imports_import_path ON imports(import_path);
 `
 
 // OpenIndex opens (or creates) the SQLite index for root, applies the schema,
@@ -285,6 +296,24 @@ func WriteFile(db *sql.DB, rel string, entry FileEntry) error {
 			callerName := resolveCallerName(entry.Symbols, c.Line)
 			if _, err := refStmt.Exec(rel, callerName, c.CalleeName, c.Line); err != nil {
 				return fmt.Errorf("WriteFile insert ref callee=%q line=%d: %w", c.CalleeName, c.Line, err)
+			}
+		}
+	}
+
+	// Batch-insert imports (if any).
+	if len(entry.Imports) > 0 {
+		impStmt, err := tx.Prepare(
+			`INSERT INTO imports (file_path, import_path, alias, line)
+			 VALUES (?, ?, ?, ?)`,
+		)
+		if err != nil {
+			return fmt.Errorf("WriteFile prepare imports: %w", err)
+		}
+		defer impStmt.Close()
+
+		for _, imp := range entry.Imports {
+			if _, err := impStmt.Exec(rel, imp.ImportPath, imp.Alias, imp.Line); err != nil {
+				return fmt.Errorf("WriteFile insert import path=%q line=%d: %w", imp.ImportPath, imp.Line, err)
 			}
 		}
 	}
