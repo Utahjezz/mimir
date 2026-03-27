@@ -113,20 +113,20 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(cmd.OutOrStdout(), "       %s=%s\n", k, v)
 		}
 		if workspaceLinksCheck {
-			if l.SrcError != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: %s\n", l.SrcError)
+			if l.SrcError != nil && *l.SrcError != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: %s\n", *l.SrcError)
 				brokenCount++
-			} else if !l.SrcFileValid {
-				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: moved from %s → %s\n", l.SrcFile, l.SrcActualFile)
+			} else if l.SrcFileValid != nil && !*l.SrcFileValid {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: moved from %s → %s\n", l.SrcFile, strDeref(l.SrcActualFile))
 				brokenCount++
 			} else {
 				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: OK (%s)\n", l.SrcFile)
 			}
-			if l.DstError != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: %s\n", l.DstError)
+			if l.DstError != nil && *l.DstError != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: %s\n", *l.DstError)
 				brokenCount++
-			} else if !l.DstFileValid {
-				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: moved from %s → %s\n", l.DstFile, l.DstActualFile)
+			} else if l.DstFileValid != nil && !*l.DstFileValid {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: moved from %s → %s\n", l.DstFile, strDeref(l.DstActualFile))
 				brokenCount++
 			} else {
 				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: OK (%s)\n", l.DstFile)
@@ -139,4 +139,12 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// strDeref safely dereferences a *string, returning "" if nil.
+func strDeref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

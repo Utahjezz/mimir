@@ -6,6 +6,22 @@ import (
 	"testing"
 )
 
+// boolVal safely dereferences a *bool for test assertions.
+func boolVal(b *bool) bool {
+	if b == nil {
+		return false
+	}
+	return *b
+}
+
+// strVal safely dereferences a *string for test assertions.
+func strVal(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // TestValidateLink_Valid verifies that a link where both symbols exist
 // at the recorded paths returns valid results with no errors.
 func TestValidateLink_Valid(t *testing.T) {
@@ -30,23 +46,23 @@ func TestValidateLink_Valid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateLink: %v", err)
 	}
-	if !result.Link.SrcValid {
-		t.Errorf("SrcValid: got false, want true")
+	if result.Link.SrcValid == nil || !*result.Link.SrcValid {
+		t.Errorf("SrcValid: got %v, want true", result.Link.SrcValid)
 	}
-	if !result.Link.DstValid {
-		t.Errorf("DstValid: got false, want true")
+	if result.Link.DstValid == nil || !*result.Link.DstValid {
+		t.Errorf("DstValid: got %v, want true", result.Link.DstValid)
 	}
-	if !result.Link.SrcFileValid {
-		t.Errorf("SrcFileValid: got false, want true (src file %q)", result.Link.SrcActualFile)
+	if result.Link.SrcFileValid == nil || !*result.Link.SrcFileValid {
+		t.Errorf("SrcFileValid: got %v, want true (src file %q)", result.Link.SrcFileValid, strVal(result.Link.SrcActualFile))
 	}
-	if !result.Link.DstFileValid {
-		t.Errorf("DstFileValid: got false, want true (dst file %q)", result.Link.DstActualFile)
+	if result.Link.DstFileValid == nil || !*result.Link.DstFileValid {
+		t.Errorf("DstFileValid: got %v, want true (dst file %q)", result.Link.DstFileValid, strVal(result.Link.DstActualFile))
 	}
-	if result.Link.SrcError != "" {
-		t.Errorf("SrcError: got %q, want empty", result.Link.SrcError)
+	if s := strVal(result.Link.SrcError); s != "" {
+		t.Errorf("SrcError: got %q, want empty", s)
 	}
-	if result.Link.DstError != "" {
-		t.Errorf("DstError: got %q, want empty", result.Link.DstError)
+	if s := strVal(result.Link.DstError); s != "" {
+		t.Errorf("DstError: got %q, want empty", s)
 	}
 }
 
@@ -73,13 +89,13 @@ func TestValidateLink_SymbolNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateLink: %v", err)
 	}
-	if result.Link.SrcValid {
+	if boolVal(result.Link.SrcValid) {
 		t.Errorf("SrcValid: got true, want false")
 	}
-	if result.Link.SrcError == "" {
+	if strVal(result.Link.SrcError) == "" {
 		t.Errorf("SrcError: got empty, want non-empty error about missing symbol")
 	}
-	if result.Link.SrcFileValid {
+	if boolVal(result.Link.SrcFileValid) {
 		t.Errorf("SrcFileValid: got true, want false (cannot check path when symbol missing)")
 	}
 }
@@ -107,10 +123,10 @@ func TestValidateLink_DstSymbolNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateLink: %v", err)
 	}
-	if result.Link.DstValid {
+	if boolVal(result.Link.DstValid) {
 		t.Errorf("DstValid: got true, want false")
 	}
-	if result.Link.DstError == "" {
+	if strVal(result.Link.DstError) == "" {
 		t.Errorf("DstError: got empty, want non-empty error about missing symbol")
 	}
 }
@@ -139,7 +155,7 @@ func TestValidateLink_RepoNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateLink: %v", err)
 	}
-	if result.Link.SrcError == "" {
+	if strVal(result.Link.SrcError) == "" {
 		t.Errorf("SrcError: got empty, want error about repo not found")
 	}
 }
