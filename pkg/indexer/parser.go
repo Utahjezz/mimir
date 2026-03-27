@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"bytes"
 	"fmt"
 	"unicode"
 	"unicode/utf8"
@@ -147,11 +148,23 @@ func runQuery(entry langEntry, code []byte) ([]SymbolInfo, error) {
 			continue
 		}
 
+		startLine := int((*node).StartPosition().Row) + 1
+		endLine := int((*node).EndPosition().Row) + 1
+
+		// File-scoped namespace declarations (C# 10+: "namespace Foo;") span
+		// only their own declaration line in the syntax tree because the grammar
+		// does not wrap subsequent declarations as children. Extend the effective
+		// end line to the last line of the file so assignParents keeps the
+		// namespace on the stack for all symbols that follow it.
+		if symType == Namespace && startLine == endLine {
+			endLine = bytes.Count(code, []byte("\n")) + 1
+		}
+
 		symbols = append(symbols, SymbolInfo{
 			Name:        name,
 			Type:        symType,
-			StartLine:   int((*node).StartPosition().Row) + 1,
-			EndLine:     int((*node).EndPosition().Row) + 1,
+			StartLine:   startLine,
+			EndLine:     endLine,
 			BodySnippet: bodySnippetFromNode(node, code),
 		})
 	}

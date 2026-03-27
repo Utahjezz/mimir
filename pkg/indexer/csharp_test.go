@@ -397,6 +397,51 @@ namespace Company.Platform {
 	}
 }
 
+func TestGetSymbols_CSharp_Namespace_FileScoped(t *testing.T) {
+	const fixture = `
+namespace Company.Platform.Services;
+
+public class NotificationService {
+    public void Send(string message) {}
+}
+
+public enum Priority { Low, Medium, High }
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("notification.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	type key struct{ name, typ string }
+	byKey := make(map[key]SymbolInfo, len(symbols))
+	for _, s := range symbols {
+		byKey[key{s.Name, string(s.Type)}] = s
+	}
+
+	cases := []struct {
+		name       string
+		typ        SymbolType
+		wantParent string
+	}{
+		{"Company.Platform.Services", Namespace, ""},
+		{"NotificationService", Class, "Company.Platform.Services"},
+		{"Send", Method, "NotificationService"},
+		{"Priority", Enum, "Company.Platform.Services"},
+	}
+
+	for _, tc := range cases {
+		s, ok := byKey[key{tc.name, string(tc.typ)}]
+		if !ok {
+			t.Errorf("symbol %q (type %s) not found", tc.name, tc.typ)
+			continue
+		}
+		if s.Parent != tc.wantParent {
+			t.Errorf("%q parent: got %q, want %q", tc.name, s.Parent, tc.wantParent)
+		}
+	}
+}
+
 // --- line ranges are sensible ---
 
 func TestGetSymbols_CSharp_LineRanges(t *testing.T) {
