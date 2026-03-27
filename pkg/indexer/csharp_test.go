@@ -442,6 +442,102 @@ public enum Priority { Low, Medium, High }
 	}
 }
 
+func TestGetSymbols_CSharp_Namespace_NestedClass(t *testing.T) {
+	const fixture = `
+namespace Models {
+    public class Order {
+        public class LineItem {
+            public decimal Price { get; set; }
+        }
+        public void Submit() {}
+    }
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("order.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	type key struct{ name, typ string }
+	byKey := make(map[key]SymbolInfo, len(symbols))
+	for _, s := range symbols {
+		byKey[key{s.Name, string(s.Type)}] = s
+	}
+
+	cases := []struct {
+		name       string
+		typ        SymbolType
+		wantParent string
+	}{
+		{"Models", Namespace, ""},
+		{"Order", Class, "Models"},
+		{"LineItem", Class, "Order"},
+		{"Price", Variable, "LineItem"},
+		{"Submit", Method, "Order"},
+	}
+
+	for _, tc := range cases {
+		s, ok := byKey[key{tc.name, string(tc.typ)}]
+		if !ok {
+			t.Errorf("symbol %q (type %s) not found", tc.name, tc.typ)
+			continue
+		}
+		if s.Parent != tc.wantParent {
+			t.Errorf("%q parent: got %q, want %q", tc.name, s.Parent, tc.wantParent)
+		}
+	}
+}
+
+func TestGetSymbols_CSharp_Namespace_Multiple(t *testing.T) {
+	const fixture = `
+namespace Contracts {
+    public interface ILogger {
+        void Log(string msg);
+    }
+}
+
+namespace Infrastructure {
+    public class ConsoleLogger {
+        public void Log(string msg) {}
+    }
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("logging.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	type key struct{ name, typ string }
+	byKey := make(map[key]SymbolInfo, len(symbols))
+	for _, s := range symbols {
+		byKey[key{s.Name, string(s.Type)}] = s
+	}
+
+	cases := []struct {
+		name       string
+		typ        SymbolType
+		wantParent string
+	}{
+		{"Contracts", Namespace, ""},
+		{"ILogger", Interface, "Contracts"},
+		{"Infrastructure", Namespace, ""},
+		{"ConsoleLogger", Class, "Infrastructure"},
+	}
+
+	for _, tc := range cases {
+		s, ok := byKey[key{tc.name, string(tc.typ)}]
+		if !ok {
+			t.Errorf("symbol %q (type %s) not found", tc.name, tc.typ)
+			continue
+		}
+		if s.Parent != tc.wantParent {
+			t.Errorf("%q parent: got %q, want %q", tc.name, s.Parent, tc.wantParent)
+		}
+	}
+}
+
 // --- line ranges are sensible ---
 
 func TestGetSymbols_CSharp_LineRanges(t *testing.T) {
