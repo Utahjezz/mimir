@@ -20,7 +20,7 @@
 - Modify: `pkg/indexer/languages/csharp/queries.go:41-65`
 - Test: `pkg/indexer/csharp_test.go`
 
-- [ ] **Step 1: Write failing test for simple namespace extraction**
+- [x] **Step 1: Write failing test for simple namespace extraction**
 
 Add to `pkg/indexer/csharp_test.go`:
 
@@ -50,12 +50,12 @@ namespace DataAccess {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -run TestGetSymbols_CSharp_Namespace_Simple -v`
 Expected: FAIL — `symbol "DataAccess" not found`
 
-- [ ] **Step 3: Add namespace patterns to C# queries**
+- [x] **Step 3: Add namespace patterns to C# queries**
 
 In `pkg/indexer/languages/csharp/queries.go`, append to the `Queries` constant (before the closing backtick):
 
@@ -73,12 +73,12 @@ In `pkg/indexer/languages/csharp/queries.go`, append to the `Queries` constant (
   name: (identifier) @name) @namespace
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -run TestGetSymbols_CSharp_Namespace_Simple -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pkg/indexer/languages/csharp/queries.go pkg/indexer/csharp_test.go
@@ -91,7 +91,7 @@ git commit -m "feat(csharp): add tree-sitter query patterns for namespace declar
 - Modify: `pkg/indexer/parser.go:27-74`
 - Test: `pkg/indexer/csharp_test.go`
 
-- [ ] **Step 1: Write failing test for namespace as parent of class**
+- [x] **Step 1: Write failing test for namespace as parent of class**
 
 Add to `pkg/indexer/csharp_test.go`:
 
@@ -123,12 +123,12 @@ namespace DataAccess {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -run TestGetSymbols_CSharp_Namespace_AsParent -v`
 Expected: FAIL — parent is `""` not `"DataAccess"`
 
-- [ ] **Step 3: Update parentTypes, childTypes, and assignParents**
+- [x] **Step 3: Update parentTypes, childTypes, and assignParents**
 
 In `pkg/indexer/parser.go`, make these changes:
 
@@ -194,17 +194,17 @@ func assignParents(symbols []SymbolInfo) []SymbolInfo {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -run TestGetSymbols_CSharp_Namespace_AsParent -v`
 Expected: PASS
 
-- [ ] **Step 5: Run all existing tests to verify no regressions**
+- [x] **Step 5: Run all existing tests to verify no regressions**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -v`
 Expected: ALL PASS — existing behavior for methods/properties in classes is unchanged.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pkg/indexer/parser.go pkg/indexer/csharp_test.go
@@ -216,7 +216,7 @@ git commit -m "feat(csharp): extend assignParents to support namespaces as paren
 **Files:**
 - Test: `pkg/indexer/csharp_test.go`
 
-- [ ] **Step 1: Write test for nested namespace FQN**
+- [x] **Step 1: Write test for nested namespace FQN**
 
 Add to `pkg/indexer/csharp_test.go`:
 
@@ -273,12 +273,12 @@ namespace Company.Platform {
 }
 ```
 
-- [ ] **Step 2: Run test**
+- [x] **Step 2: Run test**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -run TestGetSymbols_CSharp_Namespace_NestedFQN -v`
 Expected: PASS (assignParents already handles this via FQN concatenation)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add pkg/indexer/csharp_test.go
@@ -290,7 +290,7 @@ git commit -m "test(csharp): add nested namespace FQN concatenation test"
 **Files:**
 - Test: `pkg/indexer/csharp_test.go`
 
-- [ ] **Step 1: Write test for file-scoped namespace**
+- [x] **Step 1: Write test for file-scoped namespace**
 
 Add to `pkg/indexer/csharp_test.go`:
 
@@ -341,12 +341,12 @@ public enum Priority { Low, Medium, High }
 }
 ```
 
-- [ ] **Step 2: Run test**
+- [x] **Step 2: Run test**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -run TestGetSymbols_CSharp_Namespace_FileScoped -v`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add pkg/indexer/csharp_test.go
@@ -358,7 +358,7 @@ git commit -m "test(csharp): add file-scoped namespace test"
 **Files:**
 - Test: `pkg/indexer/csharp_test.go`
 
-- [ ] **Step 1: Write test for nested class inside namespace**
+- [x] **Step 1: Write test for nested class inside namespace**
 
 Add to `pkg/indexer/csharp_test.go`:
 
@@ -411,7 +411,7 @@ namespace Models {
 }
 ```
 
-- [ ] **Step 2: Write test for multiple namespaces in one file**
+- [x] **Step 2: Write test for multiple namespaces in one file**
 
 Add to `pkg/indexer/csharp_test.go`:
 
@@ -466,12 +466,12 @@ namespace Infrastructure {
 }
 ```
 
-- [ ] **Step 3: Run both tests**
+- [x] **Step 3: Run both tests**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -run "TestGetSymbols_CSharp_Namespace_(NestedClass|Multiple)" -v`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add pkg/indexer/csharp_test.go
@@ -482,13 +482,15 @@ git commit -m "test(csharp): add nested class and multiple namespace tests"
 
 ## Chunk 2: ParseDotNotation + Index Version Bump
 
-### Task 6: Fix ParseDotNotation to split on last dot
+### Task 6: Fix ParseDotNotation to split on last dot [x]
+
+Files: pkg/indexer/lookup.go:51-77, pkg/indexer/lookup_test.go (new test)
 
 **Files:**
 - Modify: `pkg/indexer/lookup.go:51-75`
 - Test: `pkg/indexer/lookup_test.go`
 
-- [ ] **Step 1: Write failing test for FQN dot notation**
+- [x] **Step 1: Write failing test for FQN dot notation**
 
 Add to `pkg/indexer/lookup_test.go`:
 
@@ -526,12 +528,12 @@ func TestParseDotNotation_LastDotSplit(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -run TestParseDotNotation_LastDotSplit -v`
 Expected: FAIL — `"A.B.C"` gives parent=`A` instead of `A.B`
 
-- [ ] **Step 3: Change IndexByte to LastIndexByte in ParseDotNotation**
+- [x] **Step 3: Change IndexByte to LastIndexByte in ParseDotNotation**
 
 In `pkg/indexer/lookup.go`, replace the `ParseDotNotation` function:
 
@@ -563,12 +565,12 @@ func ParseDotNotation(q SearchQuery) SearchQuery {
 }
 ```
 
-- [ ] **Step 4: Run new test to verify it passes**
+- [x] **Step 4: Run new test to verify it passes**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -run TestParseDotNotation_LastDotSplit -v`
 Expected: PASS
 
-- [ ] **Step 5: Run all lookup tests to verify no regressions**
+- [x] **Step 5: Run all lookup tests to verify no regressions**
 
 Run: `cd /Users/totolasso/repos/personal/mimir && go test ./pkg/indexer/ -run TestSearchSymbols -v`
 Expected: ALL PASS — single-dot behavior is unchanged.
@@ -622,3 +624,43 @@ Expected: All 5 namespace tests pass:
 - `TestGetSymbols_CSharp_Namespace_FileScoped`
 - `TestGetSymbols_CSharp_Namespace_NestedClass`
 - `TestGetSymbols_CSharp_Namespace_Multiple`
+
+---
+
+## Implementation Log
+
+### Task 1: Add namespace query patterns to C# grammar
+- **Approach:** Appended four tree-sitter patterns to `Queries` constant in `queries.go` covering both `namespace_declaration` and `file_scoped_namespace_declaration`, each with `qualified_name` or `identifier` name nodes (to handle both dotted and simple names).
+- **Files:** `pkg/indexer/languages/csharp/queries.go:65-78`, `pkg/indexer/csharp_test.go` (new test)
+
+### Task 2: Extend assignParents to support namespaces as parent containers
+- **Approach:** Added `Namespace` to `parentTypes`, added `Class`/`Interface`/`Enum`/`Namespace` to `childTypes`, added `symType` field to the `frame` struct, and added FQN concatenation for namespace-on-namespace stacking.
+- **Files:** `pkg/indexer/parser.go:27-87`, `pkg/indexer/csharp_test.go` (new test)
+- **Regressions:** Zero — all existing tests still pass after childTypes expansion.
+
+### Task 3: Test nested namespace FQN concatenation
+- **Approach:** Test-only addition; FQN concatenation was already implemented in Task 2 and passed immediately.
+- **Files:** `pkg/indexer/csharp_test.go` (new test)
+
+### Task 4: Test file-scoped namespace (C# 10+)
+- **Approach:** The plan assumed this would pass immediately, but it failed because `file_scoped_namespace_declaration` in tree-sitter spans only its own declaration line — subsequent class/enum declarations are siblings at file root, not children. Fixed in `runQuery`: when a `Namespace` symbol has `StartLine == EndLine`, its `EndLine` is extended to the total line count of the file (via `bytes.Count(code, "\n") + 1`). This keeps the namespace on the `assignParents` stack for all following symbols without affecting the stored `EndLine` for block-scoped namespaces.
+- **Discoveries:** File-scoped namespaces (`namespace Foo;`) produce a single-line tree-sitter node. This is correct grammar behavior — the grammar does not wrap sibling declarations as children of the namespace node.
+- **Files:** `pkg/indexer/parser.go` (EndLine fix in runQuery), `pkg/indexer/csharp_test.go` (new test)
+
+### Task 5: Test nested classes and multiple namespaces
+- **Approach:** Test-only additions. Both scenarios worked correctly out of the box after Tasks 2 and 4.
+- **Files:** `pkg/indexer/csharp_test.go` (two new tests)
+
+### Notes
+- The `bytes` import was added to `parser.go` for `bytes.Count` in the file-scoped namespace fix.
+- The file-scoped namespace EndLine extension is scoped to `Namespace` type only, so it does not affect any other language or symbol type.
+- Tasks 6-8 (ParseDotNotation fix, indexVersion bump, integration verification) remain to be implemented.
+
+## Implementation Log
+
+### Task 6: Fix ParseDotNotation to split on last dot
+- **Approach:** Changed both `strings.IndexByte` calls in `ParseDotNotation` to `strings.LastIndexByte`. This is a one-line-per-occurrence change — no structural refactoring needed. The function is already well-decomposed.
+- **TDD cycles:** 1 cycle. RED: 3 failing cases (`A.B.C`, `Company.Platform.Services.*`, `Company.Platform.Ser`). GREEN: both `LastIndexByte` substitutions made single-dot and FQN cases pass simultaneously.
+- **Refactoring:** Added a WHY comment explaining that `LastIndexByte` is required so FQN inputs split at the final segment boundary rather than the first.
+- **Discoveries:** The existing single-dot tests (`Server.serve`, `*.serve`, `Server.*`) pass unchanged because `LastIndexByte` and `IndexByte` agree when there is exactly one dot.
+- **Decisions:** No interface changes. `ParseDotNotation` signature and call sites are unmodified — only the split strategy changed.
