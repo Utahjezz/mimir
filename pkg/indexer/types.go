@@ -3,7 +3,7 @@ package indexer
 import "time"
 
 // indexVersion is bumped when the on-disk format changes in a breaking way.
-const indexVersion = 5
+const indexVersion = 6
 
 // SchemaVersion returns the current index schema version.
 // Exposed so CLI commands can print it alongside the binary version.
