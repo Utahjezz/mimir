@@ -7,6 +7,7 @@ import (
 	"github.com/Utahjezz/mimir/pkg/indexer/languages/golang"
 	"github.com/Utahjezz/mimir/pkg/indexer/languages/javascript"
 	"github.com/Utahjezz/mimir/pkg/indexer/languages/python"
+	"github.com/Utahjezz/mimir/pkg/indexer/languages/rust"
 	"github.com/Utahjezz/mimir/pkg/indexer/languages/typescript"
 )
 
@@ -58,6 +59,11 @@ var registeredLanguages = []languageDefinition{
 		language:   csharp.Language,
 		query:      csharp.Queries,
 		extensions: csharp.Extensions,
+	},
+	{
+		language:   rust.Language,
+		query:      rust.Queries,
+		extensions: rust.Extensions,
 	},
 }
 
@@ -127,6 +133,14 @@ var registeredCallLanguages = []struct {
 			language:  csharp.Language,
 			callQuery: csharp.CallQueries,
 			refQuery:  csharp.RefQueries,
+		},
+	},
+	{
+		name: "rust",
+		callDefinition: callDefinition{
+			language:  rust.Language,
+			callQuery: rust.CallQueries,
+			refQuery:  rust.RefQueries,
 		},
 	},
 }
