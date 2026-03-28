@@ -3,7 +3,7 @@ package indexer
 import "time"
 
 // indexVersion is bumped when the on-disk format changes in a breaking way.
-const indexVersion = 5
+const indexVersion = 6
 
 // SchemaVersion returns the current index schema version.
 // Exposed so CLI commands can print it alongside the binary version.
@@ -14,6 +14,16 @@ func SchemaVersion() int { return indexVersion }
 // Line is 1-based, matching tree-sitter row + 1.
 type CallSite struct {
 	CalleeName string `json:"callee_name"`
+	Line       int    `json:"line"`
+}
+
+// ImportSite records a single import/using statement extracted from a source file.
+// ImportPath is the module or namespace being imported.
+// Alias is the local name given to the import (empty = no alias).
+// Line is 1-based, matching tree-sitter row + 1.
+type ImportSite struct {
+	ImportPath string `json:"import_path"`
+	Alias      string `json:"alias,omitempty"`
 	Line       int    `json:"line"`
 }
 
@@ -35,6 +45,7 @@ type FileEntry struct {
 	IndexedAt time.Time    `json:"indexed_at"`
 	Symbols   []SymbolInfo `json:"symbols"`
 	Calls     []CallSite   `json:"calls,omitempty"`
+	Imports   []ImportSite `json:"imports,omitempty"`
 }
 
 // FileError records a per-file failure during indexing.

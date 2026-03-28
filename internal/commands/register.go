@@ -48,6 +48,14 @@ func Register(root *cobra.Command) {
 	reportCmd.Flags().BoolVar(&reportNoRefresh, "no-refresh", false, "Skip automatic re-index before querying")
 	root.AddCommand(reportCmd)
 
+	// imports
+	importsCmd.Flags().StringVar(&importsFile, "file", "", "Filter by source file path")
+	importsCmd.Flags().StringVar(&importsModule, "module", "", "Filter by imported module/package path")
+	importsCmd.Flags().BoolVar(&importsJSON, "json", false, "Output results as JSON")
+	importsCmd.Flags().BoolVar(&importsNoRefresh, "no-refresh", false, "Skip automatic re-index before querying")
+	importsCmd.Flags().StringVar(&importsWorkspace, "workspace", "", "Fan out imports query across all repos in this workspace")
+	root.AddCommand(importsCmd)
+
 	// refs
 	refsCmd.Flags().StringVar(&refsCaller, "caller", "", "Filter by caller symbol name")
 	refsCmd.Flags().StringVar(&refsCallee, "callee", "", "Filter by callee name")

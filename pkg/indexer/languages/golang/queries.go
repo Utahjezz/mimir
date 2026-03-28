@@ -76,6 +76,36 @@ const Queries = `
         name: (identifier) @name))) @variable)
 `
 
+// ImportQueries contains tree-sitter query patterns for Go import extraction.
+// Matches import_spec nodes inside import declarations:
+//   - plain import:   import "fmt"                 → path="fmt", alias=""
+//   - aliased import: import myfmt "fmt"            → path="fmt", alias="myfmt"
+//   - dot import:     import . "fmt"                → path="fmt", alias="."
+//   - blank import:   import _ "fmt"                → path="fmt", alias="_"
+//
+// Each match yields a @path capture (the string literal content) and an
+// optional @alias capture (package_identifier, blank_identifier, or dot).
+const ImportQueries = `
+(import_spec
+  (interpreted_string_literal
+    (interpreted_string_literal_content) @path)) @import
+
+(import_spec
+  (package_identifier) @alias
+  (interpreted_string_literal
+    (interpreted_string_literal_content) @path)) @import
+
+(import_spec
+  (blank_identifier) @alias
+  (interpreted_string_literal
+    (interpreted_string_literal_content) @path)) @import
+
+(import_spec
+  (dot) @alias
+  (interpreted_string_literal
+    (interpreted_string_literal_content) @path)) @import
+`
+
 // RefQueries captures identifiers used as values (but not called) in:
 //   - struct/composite literal fields: RunE: runIndex
 //   - var declarations: var f = myFunc

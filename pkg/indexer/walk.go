@@ -255,6 +255,12 @@ func processJob(
 		calls = nil
 	}
 
+	imports, err := ExtractImports(lang, code)
+	if err != nil {
+		// Non-fatal: continue without imports for this file.
+		imports = nil
+	}
+
 	return fileResult{
 		rel: job.rel,
 		entry: FileEntry{
@@ -265,13 +271,19 @@ func processJob(
 			IndexedAt: now,
 			Symbols:   symbols,
 			Calls:     calls,
+			Imports:   imports,
 		},
 		wasAdded: stored.Hash == "",
 	}
 }
 
 // extensionLanguage maps a file extension to a human-readable language name.
-func extensionLanguage(ext string) string {
+func extensionLanguage(ext string) string { return ExtensionLanguage(ext) }
+
+// ExtensionLanguage maps a file extension to a human-readable language name.
+// Exported so callers outside the package (e.g. CLI commands) can resolve a
+// file path to the language string expected by ExtractImports / ExtractCalls.
+func ExtensionLanguage(ext string) string {
 	switch ext {
 	case ".js", ".mjs", ".cjs":
 		return "javascript"
