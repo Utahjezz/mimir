@@ -524,3 +524,68 @@ func TestSearchSymbols_FuzzyBM25Ranking(t *testing.T) {
 		t.Errorf("BM25 ranking: expected 'processOrder' at index 0, got %q", got[0].Name)
 	}
 }
+
+// TestSearchSymbols_Limit verifies that the Limit field caps results for both
+// the SQL path (Name/NameLike) and the FTS path (FuzzyName).
+func TestSearchSymbols_Limit(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	// Seed 5 symbols so we can assert sub-limits.
+	if err := WriteFile(db, "limit.go", FileEntry{
+		Language:  "go",
+		SHA256:    "lim",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "Alpha", Type: Function, StartLine: 1, EndLine: 2},
+			{Name: "Beta", Type: Function, StartLine: 3, EndLine: 4},
+			{Name: "Gamma", Type: Function, StartLine: 5, EndLine: 6},
+			{Name: "Delta", Type: Function, StartLine: 7, EndLine: 8},
+			{Name: "Epsilon", Type: Function, StartLine: 9, EndLine: 10},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	t.Run("SQL path: zero means unlimited", func(t *testing.T) {
+		got, err := SearchSymbols(db, SearchQuery{Type: Function, Limit: 0})
+		if err != nil {
+			t.Fatalf("SearchSymbols: %v", err)
+		}
+		if len(got) != 5 {
+			t.Errorf("expected 5 results, got %d", len(got))
+		}
+	})
+
+	t.Run("SQL path: limit caps results", func(t *testing.T) {
+		got, err := SearchSymbols(db, SearchQuery{Type: Function, Limit: 2})
+		if err != nil {
+			t.Fatalf("SearchSymbols: %v", err)
+		}
+		if len(got) != 2 {
+			t.Errorf("expected 2 results, got %d", len(got))
+		}
+	})
+
+	t.Run("SQL path: limit larger than result set returns all", func(t *testing.T) {
+		got, err := SearchSymbols(db, SearchQuery{Type: Function, Limit: 100})
+		if err != nil {
+			t.Fatalf("SearchSymbols: %v", err)
+		}
+		if len(got) != 5 {
+			t.Errorf("expected 5 results, got %d", len(got))
+		}
+	})
+
+	t.Run("FTS path: limit caps results", func(t *testing.T) {
+		// "a" prefix matches Alpha, Beta, Gamma, Delta, Epsilon via body_snippet
+		// or at least the ones whose name tokens contain the letter — use a broad
+		// fuzzy that matches all 5 via prefix wildcard passthrough.
+		got, err := SearchSymbols(db, SearchQuery{FuzzyName: "alph* OR beta* OR gamm* OR delt* OR epsil*", Limit: 3})
+		if err != nil {
+			t.Fatalf("SearchSymbols: %v", err)
+		}
+		if len(got) > 3 {
+			t.Errorf("FTS limit: expected ≤3 results, got %d", len(got))
+		}
+	})
+}

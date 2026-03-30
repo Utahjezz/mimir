@@ -15,6 +15,7 @@ var (
 	searchFuzzy     string
 	searchType      string
 	searchFile      string
+	searchLimit     int
 	searchJSON      bool
 	searchNoRefresh bool
 	searchWorkspace string
@@ -66,6 +67,7 @@ func runSearchSingle(cmd *cobra.Command, root string) error {
 		FuzzyName: searchFuzzy,
 		Type:      indexer.SymbolType(searchType),
 		FilePath:  searchFile,
+		Limit:     searchLimit,
 	}
 
 	results, err := indexer.SearchSymbols(db, q)
@@ -112,6 +114,7 @@ func runSearchWorkspace(cmd *cobra.Command, _ []string) error {
 		FuzzyName: searchFuzzy,
 		Type:      indexer.SymbolType(searchType),
 		FilePath:  searchFile,
+		Limit:     searchLimit,
 	}
 
 	var all []WorkspaceSymbolRow

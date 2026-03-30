@@ -106,6 +106,7 @@ mimir dead ./myrepo --unexported
                  in the body snippet are normalised (slashes/hyphens/colons treated as
                  word boundaries), so "application/json" is searchable as "application json".
                  Use FTS5 operators (* " : ^) to bypass splitting and pass query unchanged.
+--limit  <N>     Maximum number of results to return (default 0 = unlimited)
 --type   <str>   Filter by type: function | method | class | interface |
                                type_alias | enum | namespace | variable
 --file   <str>   Filter by file path substring

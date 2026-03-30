@@ -38,6 +38,7 @@ func Register(root *cobra.Command) {
 	searchCmd.Flags().StringVar(&searchFuzzy, "fuzzy", "", "FTS5 fuzzy name match (supports prefix 'Foo*', multi-token 'foo bar')")
 	searchCmd.Flags().StringVar(&searchType, "type", "", "Symbol type (function, method, class, ...)")
 	searchCmd.Flags().StringVar(&searchFile, "file", "", "Filter by file path")
+	searchCmd.Flags().IntVar(&searchLimit, "limit", 0, "Maximum number of results to return (0 = unlimited)")
 	searchCmd.Flags().BoolVar(&searchJSON, "json", false, "Output results as JSON")
 	searchCmd.Flags().BoolVar(&searchNoRefresh, "no-refresh", false, "Skip automatic re-index before querying")
 	searchCmd.Flags().StringVar(&searchWorkspace, "workspace", "", "Fan out search across all repos in this workspace")

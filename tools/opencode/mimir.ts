@@ -130,7 +130,7 @@ export const search = tool({
   description:
     "Query the symbol index for a repository root. " +
     "Supports exact name, prefix (--like), fuzzy FTS5 (--fuzzy), " +
-    "type filter, and file-path filter. " +
+    "type filter, file-path filter, and result limit (--limit N). " +
     "Dot-notation: 'Class.method', '*.method', 'Class.*'. " +
     "Requires the index to exist (run mimir_index first). " +
     "Auto-refreshes the index if it is older than --refresh-threshold (default 10s); " +
@@ -178,6 +178,10 @@ export const search = tool({
       .string()
       .optional()
       .describe("Filter by file-path substring"),
+    limit: tool.schema
+      .number()
+      .optional()
+      .describe("Maximum number of results to return (0 or omit for unlimited)"),
     json: tool.schema
       .boolean()
       .optional()
@@ -201,6 +205,7 @@ export const search = tool({
     if (args.fuzzy)      flags.push("--fuzzy", args.fuzzy)
     if (args.type)       flags.push("--type",  args.type)
     if (args.file)       flags.push("--file",  args.file)
+    if (args.limit !== undefined) flags.push("--limit", String(args.limit))
     if (args.json)       flags.push("--json")
     if (args.no_refresh) flags.push("--no-refresh")
     return run(Bun.$`${bin} ${globalFlags} search ${args.root} ${flags}`)
