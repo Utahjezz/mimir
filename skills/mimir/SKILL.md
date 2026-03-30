@@ -50,7 +50,7 @@ mimir tree <path> --depth 3           # Directory structure with symbol counts
 |------|---------|-------|
 | **First-time orientation** | `mimir index` then `mimir report` then `mimir tree --depth 3` | Always start here on a new repo |
 | **Find a symbol definition** | `mimir symbol <root> <name>` | Prints full source. Use `--type` to disambiguate |
-| **Search symbols by pattern** | `mimir search <root> --fuzzy "query"` | camelCase/snake_case aware, searches names + body |
+| **Search symbols by pattern** | `mimir search <root> --fuzzy "query"` | camelCase/snake_case aware, BM25 ranked, searches names + body; add `--limit N` to cap results |
 | **Exact name lookup** | `mimir search <root> --name "ClassName.method"` | Dot-notation: `Class.*`, `*.method` |
 | **Prefix search** | `mimir search <root> --like "process"` | SQL LIKE prefix match |
 | **Who calls this function?** | `mimir callers <root> <symbol>` | Default 2 levels deep. Use `--depth N` |

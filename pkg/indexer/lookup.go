@@ -38,6 +38,9 @@ type SearchQuery struct {
 
 	// FilePath filters results to symbols in files whose path contains this substring.
 	FilePath string
+
+	// Limit caps the number of rows returned. Zero means no limit.
+	Limit int
 }
 
 // ParseDotNotation detects "Parent.Name" syntax in q.Name / q.NameLike and
@@ -132,6 +135,9 @@ func searchSymbolsSQL(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 		query += " WHERE " + strings.Join(conds, " AND ")
 	}
 	query += " ORDER BY file_path, start_line"
+	if q.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", q.Limit)
+	}
 
 	return scanSymbolRows(db.Query(query, args...))
 }
@@ -200,7 +206,12 @@ func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 	if len(conds) > 0 {
 		query += " AND " + strings.Join(conds, " AND ")
 	}
-	query += " ORDER BY s.file_path, s.start_line"
+	// Order by FTS5 BM25 rank (ascending — rank is negative, so more relevant
+	// rows have a more-negative value and sort first).
+	query += " ORDER BY f.rank"
+	if q.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", q.Limit)
+	}
 
 	return scanSymbolRows(db.Query(query, args...))
 }

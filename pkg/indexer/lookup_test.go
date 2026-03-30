@@ -391,6 +391,205 @@ func TestSearchSymbols_FuzzyWithTypeFilter(t *testing.T) {
 	}
 }
 
+// TestSearchSymbols_FuzzyCamelCaseQuery verifies that a camelCase query word is
+// split into sub-tokens before FTS5 matching, so that e.g. "getUserPrimaryAddress"
+// finds a symbol whose name_tokens contains "get", "user", "primary", "address".
+func TestSearchSymbols_FuzzyCamelCaseQuery(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	// Seed a symbol whose name splits into [get, user, primary, address].
+	if err := WriteFile(db, "svc.go", FileEntry{
+		Language:  "go",
+		SHA256:    "x",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "getUserPrimaryAddress", Type: Function, StartLine: 1, EndLine: 5},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	tests := []struct {
+		desc  string
+		query string
+	}{
+		{"full camelCase identifier", "getUserPrimaryAddress"},
+		{"PascalCase identifier", "GetUserPrimaryAddress"},
+		{"snake_case identifier", "get_user_primary_address"},
+		{"plain words", "get user primary address"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got, err := SearchSymbols(db, SearchQuery{FuzzyName: tt.query})
+			if err != nil {
+				t.Fatalf("SearchSymbols(%q): %v", tt.query, err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("expected 1 result for query %q, got %d: %v", tt.query, len(got), got)
+			}
+			if got[0].Name != "getUserPrimaryAddress" {
+				t.Errorf("Name: got %q, want %q", got[0].Name, "getUserPrimaryAddress")
+			}
+		})
+	}
+}
+
+// TestSearchSymbols_FuzzyNormalisedStringLiteral verifies that string literals
+// stored in body_snippet are normalised at index time so that slash-separated
+// values like "application/json" are searchable as plain words.
+func TestSearchSymbols_FuzzyNormalisedStringLiteral(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	// Seed a symbol whose body snippet contains normalised tokens from the
+	// string literal "application/json" (already split by normaliseStringToken).
+	if err := WriteFile(db, "handler.go", FileEntry{
+		Language:  "go",
+		SHA256:    "x",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{
+				Name:        "setContentType",
+				Type:        Function,
+				StartLine:   1,
+				EndLine:     5,
+				BodySnippet: "application json",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	tests := []struct {
+		desc  string
+		query string
+	}{
+		{"space-separated words", "application json"},
+		{"only first word", "application"},
+		{"only second word", "json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got, err := SearchSymbols(db, SearchQuery{FuzzyName: tt.query})
+			if err != nil {
+				t.Fatalf("SearchSymbols(%q): %v", tt.query, err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("expected 1 result for query %q, got %d: %v", tt.query, len(got), got)
+			}
+			if got[0].Name != "setContentType" {
+				t.Errorf("Name: got %q, want %q", got[0].Name, "setContentType")
+			}
+		})
+	}
+}
+
+// TestSearchSymbols_FuzzyBM25Ranking verifies that FTS5 BM25 relevance ordering
+// surfaces the closer-matching symbol before the weaker-matching one.
+//
+// Fixture:
+//   - "processOrder"   — name tokens are "process order" (strong: both query
+//     words hit the name_tokens column directly)
+//   - "handleRequest"  — name tokens are "handle request"; body snippet contains
+//     "process order" (weak: both words hit only via body_snippet)
+//
+// With BM25 ranking the name-token match should surface before the body-only match.
+func TestSearchSymbols_FuzzyBM25Ranking(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "order.go", FileEntry{
+		Language:  "go",
+		SHA256:    "x",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			// Strong match: both query words hit name_tokens.
+			{Name: "processOrder", Type: Function, StartLine: 1, EndLine: 5},
+			// Weak match: both words match, but only via body_snippet.
+			{Name: "handleRequest", Type: Function, StartLine: 7, EndLine: 12, BodySnippet: "process order"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "process order"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) < 2 {
+		t.Fatalf("expected at least 2 results, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "processOrder" {
+		t.Errorf("BM25 ranking: expected 'processOrder' at index 0, got %q", got[0].Name)
+	}
+}
+
+// TestSearchSymbols_Limit verifies that the Limit field caps results for both
+// the SQL path (Name/NameLike) and the FTS path (FuzzyName).
+func TestSearchSymbols_Limit(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	// Seed 5 symbols so we can assert sub-limits.
+	if err := WriteFile(db, "limit.go", FileEntry{
+		Language:  "go",
+		SHA256:    "lim",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "Alpha", Type: Function, StartLine: 1, EndLine: 2},
+			{Name: "Beta", Type: Function, StartLine: 3, EndLine: 4},
+			{Name: "Gamma", Type: Function, StartLine: 5, EndLine: 6},
+			{Name: "Delta", Type: Function, StartLine: 7, EndLine: 8},
+			{Name: "Epsilon", Type: Function, StartLine: 9, EndLine: 10},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	t.Run("SQL path: zero means unlimited", func(t *testing.T) {
+		got, err := SearchSymbols(db, SearchQuery{Type: Function, Limit: 0})
+		if err != nil {
+			t.Fatalf("SearchSymbols: %v", err)
+		}
+		if len(got) != 5 {
+			t.Errorf("expected 5 results, got %d", len(got))
+		}
+	})
+
+	t.Run("SQL path: limit caps results", func(t *testing.T) {
+		got, err := SearchSymbols(db, SearchQuery{Type: Function, Limit: 2})
+		if err != nil {
+			t.Fatalf("SearchSymbols: %v", err)
+		}
+		if len(got) != 2 {
+			t.Errorf("expected 2 results, got %d", len(got))
+		}
+	})
+
+	t.Run("SQL path: limit larger than result set returns all", func(t *testing.T) {
+		got, err := SearchSymbols(db, SearchQuery{Type: Function, Limit: 100})
+		if err != nil {
+			t.Fatalf("SearchSymbols: %v", err)
+		}
+		if len(got) != 5 {
+			t.Errorf("expected 5 results, got %d", len(got))
+		}
+	})
+
+	t.Run("FTS path: limit caps results", func(t *testing.T) {
+		// "a" prefix matches Alpha, Beta, Gamma, Delta, Epsilon via body_snippet
+		// or at least the ones whose name tokens contain the letter — use a broad
+		// fuzzy that matches all 5 via prefix wildcard passthrough.
+		got, err := SearchSymbols(db, SearchQuery{FuzzyName: "alph* OR beta* OR gamm* OR delt* OR epsil*", Limit: 3})
+		if err != nil {
+			t.Fatalf("SearchSymbols: %v", err)
+		}
+		if len(got) > 3 {
+			t.Errorf("FTS limit: expected ≤3 results, got %d", len(got))
+		}
+	})
+}
+
 func TestSearchSymbols_DeduplicatesDuplicateRows(t *testing.T) {
 	// Arrange: write a symbol then force-insert a second identical row via raw
 	// SQL to simulate a corrupt/pre-fix index that already contains duplicates

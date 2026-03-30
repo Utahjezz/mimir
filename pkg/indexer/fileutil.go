@@ -27,6 +27,10 @@ func fileSHA256(data []byte) string {
 // tree-sitter grammar tags them as "keyword", "operator", etc., never as
 // identifiers or strings.
 //
+// String literals are normalised: they are split on non-alphanumeric boundaries
+// so that e.g. "application/json" contributes "application" and "json" as
+// separate tokens, making them independently searchable via FTS5.
+//
 // Collecting from the full subtree (not just the first N lines) means even
 // large functions are fully represented in the FTS5 index.
 func bodySnippetFromNode(node *tree_sitter.Node, src []byte) string {
@@ -52,10 +56,17 @@ func collectSemanticTokens(node *tree_sitter.Node, src []byte, seen map[string]s
 
 	if isLeaf {
 		if strings.Contains(kind, "identifier") ||
-			strings.Contains(kind, "string") ||
 			strings.Contains(kind, "comment") {
 			tok := strings.TrimSpace(node.Utf8Text(src))
 			if tok != "" {
+				seen[tok] = struct{}{}
+			}
+		} else if strings.Contains(kind, "string") {
+			// Normalise string literals: split on non-alphanumeric boundaries so
+			// that e.g. "application/json" is indexed as two separate tokens
+			// ("application" and "json") rather than one unsplittable token.
+			raw := strings.TrimSpace(node.Utf8Text(src))
+			for _, tok := range normaliseStringToken(raw) {
 				seen[tok] = struct{}{}
 			}
 		}

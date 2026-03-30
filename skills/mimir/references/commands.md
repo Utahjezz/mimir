@@ -106,7 +106,7 @@ Query the symbol index. With no flags, returns all indexed symbols.
 
 ```bash
 mimir search [root] [--name <exact>] [--like <prefix>] [--fuzzy <fts5>]
-                    [--type <type>] [--file <path>]
+                    [--type <type>] [--file <path>] [--limit N]
                     [--workspace <name>] [--no-refresh] [--json]
 ```
 
@@ -114,14 +114,15 @@ mimir search [root] [--name <exact>] [--like <prefix>] [--fuzzy <fts5>]
 |------|-------------|
 | `--name <str>` | Exact symbol name match |
 | `--like <str>` | Symbol name prefix (SQL `LIKE` — trailing `%` is added automatically; do not include it) |
-| `--fuzzy <str>` | FTS5 match: camelCase/snake_case splitting, multi-word, body snippet |
+| `--fuzzy <str>` | FTS5 match: camelCase/snake_case splitting, multi-word, body snippet; results ordered by BM25 relevance |
 | `--type <str>` | Filter by symbol type |
-| `--file <str>` | Exact match on indexed relative file path (e.g. `pkg/indexer/facade.go`) |
+| `--file <str>` | Substring match on indexed relative file path (e.g. `facade.go`, `pkg/indexer/`) |
+| `--limit N` | Maximum number of results to return (`0` = unlimited, default) |
 | `--workspace <name>` | Fan out search across all repos in workspace (`[root]` is ignored) |
 | `--no-refresh` | Skip automatic re-index |
 | `--json` | Output as JSON |
 
-**Fuzzy behavior:** When query has no FTS5 operators, mimir auto-splits camelCase/snake_case tokens and applies prefix matching against name tokens AND body snippet. With FTS5 operators (`*`, `"`, `:`), query is passed through unchanged.
+**Fuzzy behavior:** When query has no FTS5 operators, mimir auto-splits camelCase/snake_case tokens and applies prefix matching against name tokens AND body snippet. String literals in body snippets are normalised — slashes, hyphens, and colons are treated as word boundaries, so `application/json` is searchable as `application json`. Results are ordered by BM25 relevance (best match first). With FTS5 operators (`*`, `"`, `:`), query is passed through unchanged.
 
 **Dot-notation:** `Class.method` (specific), `*.method` (any class), `Class.*` (all members).
 

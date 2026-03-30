@@ -130,7 +130,7 @@ export const search = tool({
   description:
     "Query the symbol index for a repository root. " +
     "Supports exact name, prefix (--like), fuzzy FTS5 (--fuzzy), " +
-    "type filter, and file-path filter. " +
+    "type filter, file-path filter, and result limit (--limit N). " +
     "Dot-notation: 'Class.method', '*.method', 'Class.*'. " +
     "Requires the index to exist (run mimir_index first). " +
     "Auto-refreshes the index if it is older than --refresh-threshold (default 10s); " +
@@ -155,7 +155,10 @@ export const search = tool({
       .describe(
         "FTS5 full-text search with automatic camelCase/snake_case token splitting. " +
         "Plain words (e.g. 'process job') are split into identifier tokens and matched " +
-        "against both the symbol name tokens and the body snippet (first ~10 lines). " +
+        "against both the symbol name tokens and the body snippet (semantic tokens from the full AST subtree). " +
+        "String literals in the body snippet are normalised: slash/hyphen/colon separators are treated as " +
+        "word boundaries, so 'application/json' is searchable as 'application json'. " +
+        "Results are ordered by BM25 relevance (most relevant first). " +
         "Use FTS5 operators (*  \"  :  ^) to bypass splitting and pass the query through unchanged."
       ),
     type: tool.schema
@@ -175,6 +178,12 @@ export const search = tool({
       .string()
       .optional()
       .describe("Filter by file-path substring"),
+    limit: tool.schema
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .describe("Maximum number of results to return (0 or omit for unlimited)"),
     json: tool.schema
       .boolean()
       .optional()
@@ -198,6 +207,7 @@ export const search = tool({
     if (args.fuzzy)      flags.push("--fuzzy", args.fuzzy)
     if (args.type)       flags.push("--type",  args.type)
     if (args.file)       flags.push("--file",  args.file)
+    if (args.limit !== undefined) flags.push("--limit", String(args.limit))
     if (args.json)       flags.push("--json")
     if (args.no_refresh) flags.push("--no-refresh")
     return run(Bun.$`${bin} ${globalFlags} search ${args.root} ${flags}`)
