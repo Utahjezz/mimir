@@ -267,8 +267,9 @@ func WriteFile(db *sql.DB, rel string, entry FileEntry) error {
 
 	// Batch-insert symbols.
 	stmt, err := tx.Prepare(
-		`INSERT OR IGNORE INTO symbols (file_path, name, type, start_line, end_line, parent, name_tokens, body_snippet)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO symbols (file_path, name, type, start_line, end_line, parent, name_tokens, body_snippet)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(file_path, name, type, start_line) DO NOTHING`,
 	)
 	if err != nil {
 		return fmt.Errorf("WriteFile prepare symbols: %w", err)
