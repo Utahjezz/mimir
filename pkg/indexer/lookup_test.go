@@ -434,3 +434,53 @@ func TestSearchSymbols_FuzzyCamelCaseQuery(t *testing.T) {
 		})
 	}
 }
+
+// TestSearchSymbols_FuzzyNormalisedStringLiteral verifies that string literals
+// stored in body_snippet are normalised at index time so that slash-separated
+// values like "application/json" are searchable as plain words.
+func TestSearchSymbols_FuzzyNormalisedStringLiteral(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	// Seed a symbol whose body snippet contains normalised tokens from the
+	// string literal "application/json" (already split by normaliseStringToken).
+	if err := WriteFile(db, "handler.go", FileEntry{
+		Language:  "go",
+		SHA256:    "x",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{
+				Name:        "setContentType",
+				Type:        Function,
+				StartLine:   1,
+				EndLine:     5,
+				BodySnippet: "application json",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	tests := []struct {
+		desc  string
+		query string
+	}{
+		{"space-separated words", "application json"},
+		{"only first word", "application"},
+		{"only second word", "json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got, err := SearchSymbols(db, SearchQuery{FuzzyName: tt.query})
+			if err != nil {
+				t.Fatalf("SearchSymbols(%q): %v", tt.query, err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("expected 1 result for query %q, got %d: %v", tt.query, len(got), got)
+			}
+			if got[0].Name != "setContentType" {
+				t.Errorf("Name: got %q, want %q", got[0].Name, "setContentType")
+			}
+		})
+	}
+}

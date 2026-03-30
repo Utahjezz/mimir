@@ -63,6 +63,49 @@ func splitIdentifier(name string) []string {
 	return tokens
 }
 
+// normaliseStringToken splits a raw string literal value on non-alphanumeric
+// boundaries so that e.g. "application/json" becomes ["application", "json"]
+// and is therefore searchable via FTS5 without requiring the slash.
+//
+// The function:
+//   - strips leading/trailing quote characters (", ', `)
+//   - splits on any rune that is not a letter or digit
+//   - lowercases each fragment via appendToken
+//   - discards fragments shorter than 2 runes (eliminates %s, %w, lone separators)
+func normaliseStringToken(s string) []string {
+	s = strings.Trim(s, "\"'`")
+	if s == "" {
+		return nil
+	}
+
+	var out []string
+	runes := []rune(s)
+	start := -1
+	for i, r := range runes {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			if start < 0 {
+				start = i
+			}
+		} else {
+			if start >= 0 {
+				frag := string(runes[start:i])
+				if len([]rune(frag)) >= 2 {
+					out = appendToken(out, frag)
+				}
+				start = -1
+			}
+		}
+	}
+	// Flush the final fragment.
+	if start >= 0 {
+		frag := string(runes[start:])
+		if len([]rune(frag)) >= 2 {
+			out = appendToken(out, frag)
+		}
+	}
+	return out
+}
+
 // appendToken lowercases s and appends it to dst, skipping empty strings and
 // pure-underscore segments.
 func appendToken(dst []string, s string) []string {
