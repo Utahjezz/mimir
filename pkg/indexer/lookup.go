@@ -206,7 +206,7 @@ func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 }
 
 // scanSymbolRows reads a *sql.Rows result into a []SymbolRow slice.
-// It deduplicates rows by (FilePath, Name, StartLine) to guard against
+// It deduplicates rows by (FilePath, Name, Type, StartLine) to guard against
 // pre-existing indexes that were built before the UNIQUE constraint was added.
 func scanSymbolRows(rows *sql.Rows, err error) ([]SymbolRow, error) {
 	if err != nil {
@@ -217,6 +217,7 @@ func scanSymbolRows(rows *sql.Rows, err error) ([]SymbolRow, error) {
 	type dedupKey struct {
 		file      string
 		name      string
+		typ       string
 		startLine int
 	}
 	seen := make(map[dedupKey]struct{})
@@ -228,7 +229,7 @@ func scanSymbolRows(rows *sql.Rows, err error) ([]SymbolRow, error) {
 			return nil, fmt.Errorf("SearchSymbols scan: %w", err)
 		}
 		r.Type = SymbolType(typ)
-		key := dedupKey{r.FilePath, r.Name, r.StartLine}
+		key := dedupKey{r.FilePath, r.Name, typ, r.StartLine}
 		if _, dup := seen[key]; dup {
 			continue
 		}
