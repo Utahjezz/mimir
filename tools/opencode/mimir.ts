@@ -180,6 +180,8 @@ export const search = tool({
       .describe("Filter by file-path substring"),
     limit: tool.schema
       .number()
+      .int()
+      .nonnegative()
       .optional()
       .describe("Maximum number of results to return (0 or omit for unlimited)"),
     json: tool.schema
