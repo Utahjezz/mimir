@@ -39,6 +39,9 @@ When --workspace is set, [root] is ignored and the search fans out across all re
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
+	if searchLimit < 0 {
+		return fmt.Errorf("--limit must be >= 0 (0 = unlimited, got %d)", searchLimit)
+	}
 	if searchWorkspace != "" {
 		return runSearchWorkspace(cmd, args)
 	}
