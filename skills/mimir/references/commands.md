@@ -116,7 +116,7 @@ mimir search [root] [--name <exact>] [--like <prefix>] [--fuzzy <fts5>]
 | `--like <str>` | Symbol name prefix (SQL `LIKE` — trailing `%` is added automatically; do not include it) |
 | `--fuzzy <str>` | FTS5 match: camelCase/snake_case splitting, multi-word, body snippet; results ordered by BM25 relevance |
 | `--type <str>` | Filter by symbol type |
-| `--file <str>` | Exact match on indexed relative file path (e.g. `pkg/indexer/facade.go`) |
+| `--file <str>` | Substring match on indexed relative file path (e.g. `facade.go`, `pkg/indexer/`) |
 | `--limit N` | Maximum number of results to return (`0` = unlimited, default) |
 | `--workspace <name>` | Fan out search across all repos in workspace (`[root]` is ignored) |
 | `--no-refresh` | Skip automatic re-index |
