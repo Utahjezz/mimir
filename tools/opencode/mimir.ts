@@ -158,6 +158,7 @@ export const search = tool({
         "against both the symbol name tokens and the body snippet (semantic tokens from the full AST subtree). " +
         "String literals in the body snippet are normalised: slash/hyphen/colon separators are treated as " +
         "word boundaries, so 'application/json' is searchable as 'application json'. " +
+        "Results are ordered by BM25 relevance (most relevant first). " +
         "Use FTS5 operators (*  \"  :  ^) to bypass splitting and pass the query through unchanged."
       ),
     type: tool.schema

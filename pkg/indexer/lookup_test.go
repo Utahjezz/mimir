@@ -484,3 +484,43 @@ func TestSearchSymbols_FuzzyNormalisedStringLiteral(t *testing.T) {
 		})
 	}
 }
+
+// TestSearchSymbols_FuzzyBM25Ranking verifies that FTS5 BM25 relevance ordering
+// surfaces the closer-matching symbol before the weaker-matching one.
+//
+// Fixture:
+//   - "processOrder"   — name tokens are "process order" (strong: both query
+//     words hit the name_tokens column directly)
+//   - "handleRequest"  — name tokens are "handle request"; body snippet contains
+//     "process order" (weak: both words hit only via body_snippet)
+//
+// With BM25 ranking the name-token match should surface before the body-only match.
+func TestSearchSymbols_FuzzyBM25Ranking(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "order.go", FileEntry{
+		Language:  "go",
+		SHA256:    "x",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			// Strong match: both query words hit name_tokens.
+			{Name: "processOrder", Type: Function, StartLine: 1, EndLine: 5},
+			// Weak match: both words match, but only via body_snippet.
+			{Name: "handleRequest", Type: Function, StartLine: 7, EndLine: 12, BodySnippet: "process order"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "process order"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) < 2 {
+		t.Fatalf("expected at least 2 results, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "processOrder" {
+		t.Errorf("BM25 ranking: expected 'processOrder' at index 0, got %q", got[0].Name)
+	}
+}

@@ -200,7 +200,9 @@ func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 	if len(conds) > 0 {
 		query += " AND " + strings.Join(conds, " AND ")
 	}
-	query += " ORDER BY s.file_path, s.start_line"
+	// Order by FTS5 BM25 rank (ascending — rank is negative, so more relevant
+	// rows have a more-negative value and sort first).
+	query += " ORDER BY f.rank"
 
 	return scanSymbolRows(db.Query(query, args...))
 }
