@@ -56,6 +56,14 @@ func TestTokenizeQuery(t *testing.T) {
 		// Deduplication
 		{"foo foo bar", []string{"foo", "bar"}},
 		{"", nil},
+		// camelCase word is split into sub-tokens
+		{"getUserPrimaryAddress", []string{"get", "user", "primary", "address"}},
+		// PascalCase word
+		{"AddressBookEntity", []string{"address", "book", "entity"}},
+		// snake_case word
+		{"get_file_meta", []string{"get", "file", "meta"}},
+		// mixed: plain word + camelCase identifier — cross-word deduplication
+		{"user getUserAddress", []string{"user", "get", "address"}},
 	}
 
 	for _, tt := range tests {

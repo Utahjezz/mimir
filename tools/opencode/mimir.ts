@@ -155,7 +155,7 @@ export const search = tool({
       .describe(
         "FTS5 full-text search with automatic camelCase/snake_case token splitting. " +
         "Plain words (e.g. 'process job') are split into identifier tokens and matched " +
-        "against both the symbol name tokens and the body snippet (first ~10 lines). " +
+        "against both the symbol name tokens and the body snippet (semantic tokens from the full AST subtree). " +
         "Use FTS5 operators (*  \"  :  ^) to bypass splitting and pass the query through unchanged."
       ),
     type: tool.schema

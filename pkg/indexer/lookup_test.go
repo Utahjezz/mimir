@@ -390,3 +390,47 @@ func TestSearchSymbols_FuzzyWithTypeFilter(t *testing.T) {
 		t.Errorf("Type: got %q, want %q", got[0].Type, Method)
 	}
 }
+
+// TestSearchSymbols_FuzzyCamelCaseQuery verifies that a camelCase query word is
+// split into sub-tokens before FTS5 matching, so that e.g. "getUserPrimaryAddress"
+// finds a symbol whose name_tokens contains "get", "user", "primary", "address".
+func TestSearchSymbols_FuzzyCamelCaseQuery(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	// Seed a symbol whose name splits into [get, user, primary, address].
+	if err := WriteFile(db, "svc.go", FileEntry{
+		Language:  "go",
+		SHA256:    "x",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "getUserPrimaryAddress", Type: Function, StartLine: 1, EndLine: 5},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	tests := []struct {
+		desc  string
+		query string
+	}{
+		{"full camelCase identifier", "getUserPrimaryAddress"},
+		{"PascalCase identifier", "GetUserPrimaryAddress"},
+		{"snake_case identifier", "get_user_primary_address"},
+		{"plain words", "get user primary address"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got, err := SearchSymbols(db, SearchQuery{FuzzyName: tt.query})
+			if err != nil {
+				t.Fatalf("SearchSymbols(%q): %v", tt.query, err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("expected 1 result for query %q, got %d: %v", tt.query, len(got), got)
+			}
+			if got[0].Name != "getUserPrimaryAddress" {
+				t.Errorf("Name: got %q, want %q", got[0].Name, "getUserPrimaryAddress")
+			}
+		})
+	}
+}

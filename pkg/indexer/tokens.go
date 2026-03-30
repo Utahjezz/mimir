@@ -78,14 +78,18 @@ func appendToken(dst []string, s string) []string {
 // are kept so single-letter identifiers still work.
 func tokenizeQuery(query string) []string {
 	words := strings.Fields(query)
-	seen := make(map[string]struct{}, len(words))
-	out := make([]string, 0, len(words))
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(words)*2)
 	for _, w := range words {
-		w = strings.ToLower(w)
-		if _, ok := seen[w]; !ok {
-			seen[w] = struct{}{}
-			out = append(out, w)
+		for _, tok := range splitIdentifier(w) {
+			if _, ok := seen[tok]; !ok {
+				seen[tok] = struct{}{}
+				out = append(out, tok)
+			}
 		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
