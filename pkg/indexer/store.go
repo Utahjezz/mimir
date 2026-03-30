@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS symbols (
     end_line      INTEGER NOT NULL,
     parent        TEXT    NOT NULL DEFAULT '',
     name_tokens   TEXT    NOT NULL DEFAULT '',
-    body_snippet  TEXT    NOT NULL DEFAULT ''
+    body_snippet  TEXT    NOT NULL DEFAULT '',
+    UNIQUE (file_path, name, type, start_line)
 );
 
 CREATE INDEX IF NOT EXISTS idx_symbols_file   ON symbols(file_path);
@@ -267,7 +268,8 @@ func WriteFile(db *sql.DB, rel string, entry FileEntry) error {
 	// Batch-insert symbols.
 	stmt, err := tx.Prepare(
 		`INSERT INTO symbols (file_path, name, type, start_line, end_line, parent, name_tokens, body_snippet)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(file_path, name, type, start_line) DO NOTHING`,
 	)
 	if err != nil {
 		return fmt.Errorf("WriteFile prepare symbols: %w", err)

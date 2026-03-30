@@ -91,7 +91,7 @@ func repoPathFromID(db *sql.DB, repoID string) (string, error) {
 			return r.Path, nil
 		}
 	}
-	return "", fmt.Errorf("repository %q is not registered in this workspace", repoID)
+	return "", fmt.Errorf("repository %q is not registered in this workspace — pass its ID (e.g. myrepo-a1b2c3d4) as shown by `mimir workspace show`, not its path", repoID)
 }
 
 // validateSymbolInRepo opens the index for a repository and searches for a symbol
