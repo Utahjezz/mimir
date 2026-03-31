@@ -3,6 +3,7 @@ package commands
 import (
 	"time"
 
+	setupCmd "github.com/Utahjezz/mimir/internal/commands/setup"
 	workspaceCmd "github.com/Utahjezz/mimir/internal/commands/workspace"
 	"github.com/spf13/cobra"
 )
@@ -91,4 +92,7 @@ func Register(root *cobra.Command) {
 
 	// workspace
 	root.AddCommand(workspaceCmd.WorkspaceCmd)
+
+	// setup
+	root.AddCommand(setupCmd.SetupCmd)
 }
