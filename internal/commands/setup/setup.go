@@ -24,8 +24,8 @@ var SetupCmd = &cobra.Command{
 }
 
 // prompt prints question to w, reads a line from r, and returns an integer in
-// [0..max]. On invalid input it re-prompts until the user provides a valid choice.
-func prompt(w io.Writer, r *bufio.Reader, question string, max int) (int, error) {
+// [min..max]. On invalid input it re-prompts until the user provides a valid choice.
+func prompt(w io.Writer, r *bufio.Reader, question string, min, max int) (int, error) {
 	for {
 		fmt.Fprint(w, question)
 		line, err := r.ReadString('\n')
@@ -34,10 +34,10 @@ func prompt(w io.Writer, r *bufio.Reader, question string, max int) (int, error)
 		}
 		line = strings.TrimSpace(line)
 		n, err := strconv.Atoi(line)
-		if err == nil && n >= 0 && n <= max {
+		if err == nil && n >= min && n <= max {
 			return n, nil
 		}
-		fmt.Fprintf(w, "  Invalid choice %q — enter a number between 0 and %d.\n", line, max)
+		fmt.Fprintf(w, "  Invalid choice %q — enter a number between %d and %d.\n", line, min, max)
 	}
 }
 
@@ -138,7 +138,7 @@ func runSkillWizard(w io.Writer, r *bufio.Reader) error {
 	fmt.Fprintln(w, "Install scope?")
 	fmt.Fprintln(w, "  [1] Global  (~/.agents/skills/mimir/)")
 	fmt.Fprintln(w, "  [2] Project-local")
-	scope, err := prompt(w, r, "▶ ", 2)
+	scope, err := prompt(w, r, "▶ ", 1, 2)
 	if err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func runSkillWizard(w io.Writer, r *bufio.Reader) error {
 		fmt.Fprintln(w, "Install for which tool?")
 		fmt.Fprintln(w, "  [1] OpenCode    (.opencode/skills/mimir/)")
 		fmt.Fprintln(w, "  [2] Claude Code (.claude/skills/mimir/)")
-		app, err = prompt(w, r, "▶ ", 2)
+		app, err = prompt(w, r, "▶ ", 1, 2)
 		if err != nil {
 			return err
 		}
@@ -173,7 +173,7 @@ func runToolWizard(w io.Writer, r *bufio.Reader) error {
 	fmt.Fprintln(w, "Install scope?")
 	fmt.Fprintln(w, "  [1] Global  (~/.config/opencode/tools/mimir.ts)")
 	fmt.Fprintln(w, "  [2] Project (.opencode/tools/mimir.ts)")
-	scope, err := prompt(w, r, "▶ ", 2)
+	scope, err := prompt(w, r, "▶ ", 1, 2)
 	if err != nil {
 		return err
 	}
@@ -200,7 +200,7 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintln(w, "  [2] Tool    (OpenCode only — exposes mimir as native tool calls)")
 	fmt.Fprintln(w, "  [0] Cancel")
 
-	choice, err := prompt(w, r, "▶ ", 2)
+	choice, err := prompt(w, r, "▶ ", 0, 2)
 	if err != nil {
 		return err
 	}
