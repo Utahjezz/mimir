@@ -2,6 +2,7 @@ package setup
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,6 +16,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// errCancelled is returned when the user signals EOF on an empty line. It is
+// handled by runSetup to exit cleanly without printing a cobra error message.
+var errCancelled = errors.New("cancelled")
+
 // SetupCmd is the cobra command for `mimir setup`.
 var SetupCmd = &cobra.Command{
 	Use:   "setup",
@@ -25,16 +30,27 @@ var SetupCmd = &cobra.Command{
 
 // prompt prints question to w, reads a line from r, and returns an integer in
 // [min..max]. On invalid input it re-prompts until the user provides a valid choice.
+// If stdin is closed (EOF) with a partial line, that line is used as input.
+// If stdin is closed on an empty line, errCancelled is returned.
 func prompt(w io.Writer, r *bufio.Reader, question string, min, max int) (int, error) {
 	for {
 		fmt.Fprint(w, question)
 		line, err := r.ReadString('\n')
 		if err != nil {
-			return 0, fmt.Errorf("reading input: %w", err)
+			if errors.Is(err, io.EOF) {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					return 0, errCancelled
+				}
+				// fall through: treat partial line as input
+			} else {
+				return 0, fmt.Errorf("reading input: %w", err)
+			}
+		} else {
+			line = strings.TrimSpace(line)
 		}
-		line = strings.TrimSpace(line)
-		n, err := strconv.Atoi(line)
-		if err == nil && n >= min && n <= max {
+		n, convErr := strconv.Atoi(line)
+		if convErr == nil && n >= min && n <= max {
 			return n, nil
 		}
 		fmt.Fprintf(w, "  Invalid choice %q — enter a number between %d and %d.\n", line, min, max)
@@ -202,6 +218,10 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 
 	choice, err := prompt(w, r, "▶ ", 0, 2)
 	if err != nil {
+		if errors.Is(err, errCancelled) {
+			fmt.Fprintln(w, "Cancelled.")
+			return nil
+		}
 		return err
 	}
 	if choice == 0 {
@@ -210,13 +230,16 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 	}
 
 	if choice == 1 {
-		if err := runSkillWizard(w, r); err != nil {
-			return fmt.Errorf("skill install failed: %w", err)
-		}
+		err = runSkillWizard(w, r)
 	} else {
-		if err := runToolWizard(w, r); err != nil {
-			return fmt.Errorf("tool install failed: %w", err)
+		err = runToolWizard(w, r)
+	}
+	if err != nil {
+		if errors.Is(err, errCancelled) {
+			fmt.Fprintln(w, "Cancelled.")
+			return nil
 		}
+		return err
 	}
 
 	fmt.Fprintln(w)
