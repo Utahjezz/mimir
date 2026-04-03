@@ -98,7 +98,7 @@ func installSkill(w io.Writer, targetDir string) error {
 			return err
 		}
 	}
-	fmt.Fprintf(w, "  ✓  %s\n", displayPath(targetDir)+"/")
+	fmt.Fprintf(w, "  ✓  %s\n", displayPath(targetDir))
 	return nil
 }
 
