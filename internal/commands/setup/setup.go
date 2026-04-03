@@ -207,7 +207,7 @@ func runToolWizard(w io.Writer, r *bufio.Reader) error {
 // runSetup drives the interactive setup wizard.
 func runSetup(cmd *cobra.Command, _ []string) error {
 	w := cmd.OutOrStdout()
-	r := bufio.NewReader(os.Stdin)
+	r := bufio.NewReader(cmd.InOrStdin())
 
 	fmt.Fprintln(w, "Mimir Setup — integrate with your agentic coding tools")
 	fmt.Fprintln(w)
