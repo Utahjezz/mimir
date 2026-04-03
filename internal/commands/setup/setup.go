@@ -63,7 +63,7 @@ func displayPath(path string) string {
 	if err != nil {
 		return path
 	}
-	if strings.HasPrefix(path, home) {
+	if path == home || strings.HasPrefix(path, home+string(os.PathSeparator)) {
 		return "~" + path[len(home):]
 	}
 	return path
