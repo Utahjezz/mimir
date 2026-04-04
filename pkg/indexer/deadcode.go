@@ -21,6 +21,7 @@ package indexer
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"unicode"
 )
@@ -42,9 +43,10 @@ type DeadCodeQuery struct {
 	// FilePath filters results to symbols in files whose path contains this substring.
 	FilePath string
 
-	// UnexportedOnly restricts results to symbols whose name starts with a
-	// lowercase letter — i.e. unexported in Go convention. Reduces false
-	// positives for public APIs.
+	// UnexportedOnly restricts results to symbols considered unexported by
+	// their language conventions: lowercase first letter for Go, and no
+	// filtering for Rust (pub visibility cannot be inferred from the name).
+	// Reduces false positives for public APIs.
 	UnexportedOnly bool
 }
 
@@ -107,7 +109,7 @@ func FindDeadSymbols(db *sql.DB, q DeadCodeQuery) ([]DeadSymbol, error) {
 		if err := rows.Scan(&d.Name, &d.Type, &d.FilePath, &d.Line); err != nil {
 			return nil, fmt.Errorf("FindDeadSymbols scan: %w", err)
 		}
-		if q.UnexportedOnly && !isUnexported(d.Name) {
+		if q.UnexportedOnly && !isUnexported(d.Name, d.FilePath) {
 			continue
 		}
 		results = append(results, d)
@@ -157,11 +159,24 @@ func CountDeadCandidates(db *sql.DB, q DeadCodeQuery) (int, error) {
 	return n, nil
 }
 
-// isUnexported reports whether name starts with a lowercase letter — the Go
-// convention for unexported identifiers.
-func isUnexported(name string) bool {
+// isUnexported reports whether a symbol is unexported (private) based on the
+// language conventions of the file it appears in.
+//
+//   - Go (.go): unexported = starts with a lowercase letter.
+//   - Rust (.rs): visibility is determined by the pub keyword, which is not
+//     available from the symbol name alone. Returns false (assume exported) to
+//     avoid false positives in dead-code reports with --unexported.
+//   - Other languages: falls back to the Go convention (lowercase = unexported).
+func isUnexported(name, filePath string) bool {
 	if name == "" {
 		return false
 	}
-	return unicode.IsLower(rune(name[0]))
+	switch filepath.Ext(filePath) {
+	case ".rs":
+		// Rust visibility (pub vs non-pub) cannot be inferred from the name.
+		// Treat all Rust symbols as potentially exported to avoid misclassification.
+		return false
+	default:
+		return unicode.IsLower(rune(name[0]))
+	}
 }
