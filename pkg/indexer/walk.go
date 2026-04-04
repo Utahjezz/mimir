@@ -297,6 +297,8 @@ func ExtensionLanguage(ext string) string {
 		return "python"
 	case ".cs":
 		return "csharp"
+	case ".rs":
+		return "rust"
 	default:
 		return ext
 	}

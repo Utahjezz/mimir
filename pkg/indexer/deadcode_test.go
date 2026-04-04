@@ -161,7 +161,7 @@ func TestFindDeadSymbols_UnexportedOnly_SuppressesExported(t *testing.T) {
 	}
 
 	for _, d := range dead {
-		if !isUnexported(d.Name) {
+		if !isUnexported(d.Name, d.FilePath) {
 			t.Errorf("symbol %q is exported and must be suppressed by UnexportedOnly", d.Name)
 		}
 	}
@@ -339,6 +339,100 @@ func TestFindDeadSymbols_FuncPassedAsValue_NotDead(t *testing.T) {
 	for _, d := range dead {
 		if d.Name == "runIndex" {
 			t.Error("runIndex is referenced as a value (RunE) and must not appear as dead")
+		}
+	}
+}
+
+// --- Rust: UnexportedOnly must not misclassify Rust symbols ---
+
+func seedRustDeadCodeDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db := openTestDB(t, t.TempDir())
+
+	// Rust file with both "pub" and non-pub symbols.
+	// Note: pub visibility is NOT reflected in the symbol name.
+	if err := WriteFile(db, "lib.rs", FileEntry{
+		Language:  "rust",
+		SHA256:    "rs1",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "public_fn", Type: Function, StartLine: 1, EndLine: 5},   // pub fn
+			{Name: "private_fn", Type: Function, StartLine: 7, EndLine: 10}, // fn (no pub)
+			{Name: "Server", Type: Class, StartLine: 12, EndLine: 20},       // pub struct
+			{Name: "new", Type: Method, StartLine: 14, EndLine: 18, Parent: "Server"},
+		},
+		Calls: []CallSite{},
+	}); err != nil {
+		t.Fatalf("WriteFile lib.rs: %v", err)
+	}
+
+	return db
+}
+
+func TestFindDeadSymbols_Rust_UnexportedOnly_DoesNotFilter(t *testing.T) {
+	db := seedRustDeadCodeDB(t)
+
+	// With UnexportedOnly=true, Rust symbols should NOT be filtered out because
+	// we cannot determine pub/non-pub from the symbol name alone.
+	dead, err := FindDeadSymbols(db, DeadCodeQuery{UnexportedOnly: true})
+	if err != nil {
+		t.Fatalf("FindDeadSymbols Rust unexported: %v", err)
+	}
+
+	// All Rust symbols should be treated as potentially exported → excluded
+	// by UnexportedOnly (isUnexported returns false for .rs files).
+	for _, d := range dead {
+		if d.FilePath == "lib.rs" {
+			t.Errorf("Rust symbol %q in %s should be excluded by UnexportedOnly "+
+				"(cannot determine pub visibility from name)", d.Name, d.FilePath)
+		}
+	}
+}
+
+func TestFindDeadSymbols_Rust_WithoutUnexportedOnly_ShowsAll(t *testing.T) {
+	db := seedRustDeadCodeDB(t)
+
+	// Without UnexportedOnly, all dead Rust symbols should appear.
+	dead, err := FindDeadSymbols(db, DeadCodeQuery{})
+	if err != nil {
+		t.Fatalf("FindDeadSymbols Rust: %v", err)
+	}
+
+	names := make(map[string]bool, len(dead))
+	for _, d := range dead {
+		names[d.Name] = true
+	}
+
+	for _, want := range []string{"public_fn", "private_fn", "new"} {
+		if !names[want] {
+			t.Errorf("expected dead Rust symbol %q, not found in results", want)
+		}
+	}
+}
+
+func TestIsUnexported_GoConvention(t *testing.T) {
+	tests := []struct {
+		name     string
+		filePath string
+		want     bool
+	}{
+		{"lowercase", "main.go", true},
+		{"Uppercase", "main.go", false},
+		{"_underscore", "util.go", false},
+		{"", "main.go", false},
+	}
+	for _, tt := range tests {
+		if got := isUnexported(tt.name, tt.filePath); got != tt.want {
+			t.Errorf("isUnexported(%q, %q) = %v, want %v", tt.name, tt.filePath, got, tt.want)
+		}
+	}
+}
+
+func TestIsUnexported_RustAlwaysFalse(t *testing.T) {
+	// Rust symbols should always return false (cannot determine from name).
+	for _, name := range []string{"public_fn", "Server", "new", "private_fn"} {
+		if isUnexported(name, "lib.rs") {
+			t.Errorf("isUnexported(%q, \"lib.rs\") = true, want false for Rust", name)
 		}
 	}
 }

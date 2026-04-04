@@ -878,3 +878,98 @@ func TestExtractCalls_CSharpCaptures_DelegateAssignmentRef(t *testing.T) {
 		t.Error("Unused is never referenced and must not appear in extracted refs")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Rust
+// ---------------------------------------------------------------------------
+
+const rustCallFixture = `
+fn helper() {}
+
+fn plain_call() {
+    helper();
+}
+
+struct Server {
+    port: u16,
+}
+
+impl Server {
+    fn new(port: u16) -> Self { Server { port } }
+
+    fn start(&self) {
+        self.listen();
+    }
+
+    fn listen(&self) {}
+}
+
+fn use_server() {
+    let s = Server::new(8080);
+    s.start();
+    println!("running");
+    vec![1, 2, 3];
+}
+
+fn assigned_ref() {
+    let f = helper;
+    let g = plain_call;
+}
+`
+
+func TestExtractCalls_RustFindsCallSites(t *testing.T) {
+	calls, err := ExtractCalls("rust", []byte(rustCallFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls Rust: %v", err)
+	}
+
+	names := make(map[string]bool, len(calls))
+	for _, c := range calls {
+		names[c.CalleeName] = true
+	}
+
+	// Plain call
+	if !names["helper"] {
+		t.Error("expected plain call to 'helper'")
+	}
+	// Method call (self.listen)
+	if !names["listen"] {
+		t.Error("expected method call to 'listen'")
+	}
+	// Associated function (Server::new)
+	if !names["new"] {
+		t.Error("expected associated function call 'new'")
+	}
+	// Method call on variable (s.start)
+	if !names["start"] {
+		t.Error("expected method call to 'start'")
+	}
+	// Macro invocations
+	if !names["println"] {
+		t.Error("expected macro invocation 'println'")
+	}
+	if !names["vec"] {
+		t.Error("expected macro invocation 'vec'")
+	}
+}
+
+func TestExtractCalls_RustCaptures_LetBindingRef(t *testing.T) {
+	calls, err := ExtractCalls("rust", []byte(rustCallFixture))
+	if err != nil {
+		t.Fatalf("ExtractCalls Rust: %v", err)
+	}
+
+	names := make(map[string]bool, len(calls))
+	for _, c := range calls {
+		names[c.CalleeName] = true
+	}
+
+	// let f = helper; should capture 'helper' as a ref
+	if !names["helper"] {
+		t.Error("helper assigned via let binding must appear in extracted refs")
+	}
+	// let g = plain_call; should capture 'plain_call' as a ref
+	if !names["plain_call"] {
+		t.Error("plain_call assigned via let binding must appear in extracted refs")
+	}
+}
