@@ -3,6 +3,7 @@ package commands
 import (
 	"time"
 
+	setupCmd "github.com/Utahjezz/mimir/internal/commands/setup"
 	workspaceCmd "github.com/Utahjezz/mimir/internal/commands/workspace"
 	"github.com/spf13/cobra"
 )
@@ -38,6 +39,7 @@ func Register(root *cobra.Command) {
 	searchCmd.Flags().StringVar(&searchFuzzy, "fuzzy", "", "FTS5 fuzzy name match (supports prefix 'Foo*', multi-token 'foo bar')")
 	searchCmd.Flags().StringVar(&searchType, "type", "", "Symbol type (function, method, class, ...)")
 	searchCmd.Flags().StringVar(&searchFile, "file", "", "Filter by file path")
+	searchCmd.Flags().IntVar(&searchLimit, "limit", 0, "Maximum number of results to return (0 = unlimited)")
 	searchCmd.Flags().BoolVar(&searchJSON, "json", false, "Output results as JSON")
 	searchCmd.Flags().BoolVar(&searchNoRefresh, "no-refresh", false, "Skip automatic re-index before querying")
 	searchCmd.Flags().StringVar(&searchWorkspace, "workspace", "", "Fan out search across all repos in this workspace")
@@ -47,6 +49,14 @@ func Register(root *cobra.Command) {
 	reportCmd.Flags().BoolVar(&reportJSON, "json", false, "Output report as JSON")
 	reportCmd.Flags().BoolVar(&reportNoRefresh, "no-refresh", false, "Skip automatic re-index before querying")
 	root.AddCommand(reportCmd)
+
+	// imports
+	importsCmd.Flags().StringVar(&importsFile, "file", "", "Filter by source file path")
+	importsCmd.Flags().StringVar(&importsModule, "module", "", "Filter by imported module/package path")
+	importsCmd.Flags().BoolVar(&importsJSON, "json", false, "Output results as JSON")
+	importsCmd.Flags().BoolVar(&importsNoRefresh, "no-refresh", false, "Skip automatic re-index before querying")
+	importsCmd.Flags().StringVar(&importsWorkspace, "workspace", "", "Fan out imports query across all repos in this workspace")
+	root.AddCommand(importsCmd)
 
 	// refs
 	refsCmd.Flags().StringVar(&refsCaller, "caller", "", "Filter by caller symbol name")
@@ -82,4 +92,7 @@ func Register(root *cobra.Command) {
 
 	// workspace
 	root.AddCommand(workspaceCmd.WorkspaceCmd)
+
+	// setup
+	root.AddCommand(setupCmd.SetupCmd)
 }

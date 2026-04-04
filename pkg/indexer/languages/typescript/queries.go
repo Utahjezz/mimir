@@ -35,6 +35,22 @@ const TSXCallQueries = CallQueries + `
   name: (identifier) @callee) @call
 `
 
+// ImportQueries contains tree-sitter query patterns for TypeScript import extraction.
+// Matches import_statement nodes:
+//   - side-effect import:    import 'mod'              → path="mod", alias=""
+//   - default import:        import X from 'mod'       → path="mod", alias=""
+//   - named imports:         import { A, B } from 'mod'→ path="mod", alias=""
+//   - namespace import:      import * as ns from 'mod' → path="mod", alias=""
+//
+// Each match yields only a @path capture (the string_fragment of the module specifier).
+// Aliases (the locally-bound name) are not captured; alias is always "".
+// To add alias support, extend this query with @alias captures per import form.
+const ImportQueries = `
+(import_statement
+  source: (string
+    (string_fragment) @path)) @import
+`
+
 // RefQueries captures identifiers used as values (not called directly) in:
 //   - object/array literal properties: { handler: myFn }
 //   - variable declarators: const f = myFn  /  let f = myFn  /  var f = myFn
@@ -56,9 +72,13 @@ const RefQueries = `
 // Queries contains tree-sitter query patterns for TypeScript symbol extraction.
 // Covers all JS patterns plus TypeScript-specific constructs:
 // interfaces, type aliases, enums (regular and const), namespaces,
-// abstract classes, abstract methods, and decorated classes.
+// abstract classes, abstract methods, decorated classes,
+// and generator functions (function* foo).
 const Queries = `
 (function_declaration
+  name: (identifier) @name) @function
+
+(generator_function_declaration
   name: (identifier) @name) @function
 
 (lexical_declaration

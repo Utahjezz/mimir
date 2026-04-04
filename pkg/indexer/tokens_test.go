@@ -11,7 +11,7 @@ func TestSplitIdentifier(t *testing.T) {
 		want  []string
 	}{
 		// camelCase
-		{"useCesarinaPrimaryAddress", []string{"use", "cesarina", "primary", "address"}},
+		{"getUserPrimaryAddress", []string{"get", "user", "primary", "address"}},
 		// PascalCase
 		{"AddressBookEntity", []string{"address", "book", "entity"}},
 		// snake_case
@@ -51,11 +51,19 @@ func TestTokenizeQuery(t *testing.T) {
 		input string
 		want  []string
 	}{
-		{"cesarina address", []string{"cesarina", "address"}},
+		{"user address", []string{"user", "address"}},
 		{"  fetch  USER  ", []string{"fetch", "user"}},
 		// Deduplication
 		{"foo foo bar", []string{"foo", "bar"}},
 		{"", nil},
+		// camelCase word is split into sub-tokens
+		{"getUserPrimaryAddress", []string{"get", "user", "primary", "address"}},
+		// PascalCase word
+		{"AddressBookEntity", []string{"address", "book", "entity"}},
+		// snake_case word
+		{"get_file_meta", []string{"get", "file", "meta"}},
+		// mixed: plain word + camelCase identifier — cross-word deduplication
+		{"user getUserAddress", []string{"user", "get", "address"}},
 	}
 
 	for _, tt := range tests {
@@ -66,6 +74,46 @@ func TestTokenizeQuery(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("tokenizeQuery(%q)\n  got  %v\n  want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormaliseStringToken(t *testing.T) {
+	tests := []struct {
+		input string
+		want  []string
+	}{
+		// slash-separated MIME type
+		{`"application/json"`, []string{"application", "json"}},
+		// hyphenated header name
+		{`"Content-Type"`, []string{"content", "type"}},
+		// format string: single-char fragments (%s, %w) are discarded
+		{`"cannot open %s: %w"`, []string{"cannot", "open"}},
+		// plain word — unchanged (still lowercased)
+		{`"hello"`, []string{"hello"}},
+		// empty string
+		{`""`, nil},
+		// only separators — no fragments
+		{`"/"`, nil},
+		// backtick-quoted (Go raw string)
+		{"`application/json`", []string{"application", "json"}},
+		// single-quoted
+		{`'text/html'`, []string{"text", "html"}},
+		// colon-separated
+		{`"foo:bar"`, []string{"foo", "bar"}},
+		// unquoted plain word
+		{"hello", []string{"hello"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := normaliseStringToken(tt.input)
+			if len(got) == 0 && len(tt.want) == 0 {
+				return // both nil/empty — pass
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("normaliseStringToken(%q)\n  got  %v\n  want %v", tt.input, got, tt.want)
 			}
 		})
 	}

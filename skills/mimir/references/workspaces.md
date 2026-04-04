@@ -59,11 +59,94 @@ mimir workspace link backend-a1b2c3d4 OrderService.PlaceOrder \
   --note "synchronous call on checkout"
 ```
 
-### `mimir workspace links [workspace] [--from <path>] [--src-symbol <name>] [--dst-symbol <name>] [--json]`
+### `mimir workspace links [workspace] [--from <path>] [--src-symbol <name>] [--dst-symbol <name>] [--check] [--json]`
 List links. Defaults to filtering by the repo containing the current working directory. To list all links, run from a directory that is not registered in the workspace.
+
+| Flag | Description |
+|------|-------------|
+| `--check` | Validate that symbols and file paths still exist in their respective repositories. Reports broken links (missing symbols or moved files). |
+| `--from <path>` | Filter links by source repository path |
+| `--src-symbol <name>` | Filter by source symbol name (exact match) |
+| `--dst-symbol <name>` | Filter by destination symbol name (exact match) |
+| `--json` | Output as JSON array |
+
+```bash
+# List all links with validation
+mimir workspace links --check
+
+# Output when broken links found:
+# #1   MyFunc (repo-id)
+#      → OtherFunc (repo-id)
+#      [CHECK] src: symbol "MyFunc" not found in repo
+#      [CHECK] dst: OK (pkg.go)
+#
+# ⚠ 1 broken link(s) found. Run `mimir workspace unlink <id>` to remove.
+```
 
 ### `mimir workspace unlink <id> [workspace]`
 Remove a link by numeric ID (shown in `workspace links` output).
+
+## Link Discovery Protocol
+
+**Run this only if the user confirms** (see `SKILL.md` → Cross-Repo Link Obligation for when to ask).
+
+### Step 1 — Find candidate cross-repo calls
+
+For each repo, inspect its outbound refs and check whether the callee names exist as symbols in any other workspace repo:
+
+```bash
+# See what a repo calls (scan callee_name column)
+mimir refs <repo-path> --json
+
+# For each callee name that looks like it might live in another repo:
+mimir search <other-repo-path> --name "<callee-name>"
+mimir search <other-repo-path> --fuzzy "<callee-name>"   # when casing differs
+```
+
+A **candidate link** exists when:
+- Repo A calls a name that resolves as a symbol in Repo B
+- The relationship is plausible (same domain, matching naming convention)
+
+### Step 2 — Check existing links to avoid duplicates
+
+```bash
+mimir workspace links   # review what's already declared
+```
+
+Skip any candidate already covered by an existing link.
+
+### Step 3 — Declare confirmed links
+
+For each candidate you are confident about:
+
+```bash
+mimir workspace show   # get repo IDs
+
+mimir workspace link <src-repo-id> <src-symbol> \
+                     <dst-repo-id> <dst-symbol> \
+  --note "<one sentence: what this connection represents>" \
+  --meta protocol=<grpc|graphql|http|event|shared-type|...>
+```
+
+**What makes a good note:**
+- States the direction: "A calls B to do X"
+- Names the mechanism: GraphQL query, gRPC method, event, shared type
+- Is useful to a future agent reading it cold
+
+### Step 4 — Verify
+
+```bash
+mimir workspace links --check   # confirm links appear correctly and are not broken
+```
+
+### Common Rationalizations — Do Not Accept
+
+| Excuse | Reality |
+|--------|---------|
+| "The connection is obvious" | Undeclared links don't survive the session |
+| "I only found one relationship" | One link is worth declaring |
+| "I'm not 100% sure" | Declare with a qualifying note; imperfect links beat no links |
+| "I'll do it at the end" | The end is now — run the protocol before closing |
 
 ## Cross-Repo Search and Refs
 

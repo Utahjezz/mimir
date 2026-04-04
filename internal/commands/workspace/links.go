@@ -15,6 +15,7 @@ var (
 	workspaceLinksJSON      bool
 	workspaceLinksSrcSymbol string
 	workspaceLinksDstSymbol string
+	workspaceLinksCheck     bool
 )
 
 var workspaceLinksCmd = &cobra.Command{
@@ -75,6 +76,17 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Validate links if --check flag is set.
+	if workspaceLinksCheck {
+		for i := range links {
+			result, err := workspace.ValidateLink(db, &links[i])
+			if err != nil {
+				return fmt.Errorf("validation failed for link #%d: %w", links[i].ID, err)
+			}
+			links[i] = result.Link
+		}
+	}
+
 	if workspaceLinksJSON {
 		if links == nil {
 			links = []workspace.Link{}
@@ -87,6 +99,7 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	brokenCount := 0
 	for _, l := range links {
 		fmt.Fprintf(cmd.OutOrStdout(), "#%-4d  %s (%s)\n       → %s (%s)\n",
 			l.ID,
@@ -99,7 +112,44 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 		for k, v := range l.Meta {
 			fmt.Fprintf(cmd.OutOrStdout(), "       %s=%s\n", k, v)
 		}
+		if workspaceLinksCheck {
+			srcBroken := (l.SrcError != nil && *l.SrcError != "") ||
+				(l.SrcFileValid != nil && !*l.SrcFileValid)
+			dstBroken := (l.DstError != nil && *l.DstError != "") ||
+				(l.DstFileValid != nil && !*l.DstFileValid)
+
+			if l.SrcError != nil && *l.SrcError != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: %s\n", *l.SrcError)
+			} else if l.SrcFileValid != nil && !*l.SrcFileValid {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: moved from %s → %s\n", l.SrcFile, strDeref(l.SrcActualFile))
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] src: OK (%s)\n", l.SrcFile)
+			}
+			if l.DstError != nil && *l.DstError != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: %s\n", *l.DstError)
+			} else if l.DstFileValid != nil && !*l.DstFileValid {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: moved from %s → %s\n", l.DstFile, strDeref(l.DstActualFile))
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "       [CHECK] dst: OK (%s)\n", l.DstFile)
+			}
+
+			if srcBroken || dstBroken {
+				brokenCount++
+			}
+		}
+	}
+
+	if workspaceLinksCheck && brokenCount > 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "\n⚠ %d broken link(s) found. Run `mimir workspace unlink <id>` to remove.\n", brokenCount)
 	}
 
 	return nil
+}
+
+// strDeref safely dereferences a *string, returning "" if nil.
+func strDeref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

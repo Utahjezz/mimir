@@ -14,6 +14,7 @@ package indexer
 //   - "*.ClassName" returns the class (parent is non-empty)
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 )
@@ -51,7 +52,7 @@ namespace Company.GameEngine {
 
 // seedCSharpNamespaceDB parses the fixture through the real parser pipeline
 // and stores results in a test DB, exactly as `mimir index` would.
-func seedCSharpNamespaceDB(t *testing.T) *TestSearchDB {
+func seedCSharpNamespaceDB(t *testing.T) *sql.DB {
 	t.Helper()
 	m := newTestMuncher()
 	symbols, err := m.GetSymbols("cards.cs", []byte(csharpNamespaceFixture))
@@ -69,12 +70,7 @@ func seedCSharpNamespaceDB(t *testing.T) *TestSearchDB {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	return &TestSearchDB{db: db, symbols: symbols}
-}
-
-type TestSearchDB struct {
-	db      interface{ Close() error }
-	symbols []SymbolInfo
+	return db
 }
 
 // TestCSharpNamespace_Regression_NamespaceWildcard proves that
@@ -83,21 +79,7 @@ type TestSearchDB struct {
 // BEFORE FIX: 0 results (classes had parent="")
 // AFTER FIX:  5 results (CardBase, RunnerCard, CorpCard, IScoreable, Faction)
 func TestCSharpNamespace_Regression_NamespaceWildcard(t *testing.T) {
-	m := newTestMuncher()
-	symbols, err := m.GetSymbols("cards.cs", []byte(csharpNamespaceFixture))
-	if err != nil {
-		t.Fatalf("GetSymbols: %v", err)
-	}
-
-	db := openTestDB(t, t.TempDir())
-	if err := WriteFile(db, "cards.cs", FileEntry{
-		Language:  "csharp",
-		SHA256:    "test",
-		IndexedAt: time.Now().UTC(),
-		Symbols:   symbols,
-	}); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+	db := seedCSharpNamespaceDB(t)
 
 	// This is the query that FAILED before the fix.
 	// "Company.GameEngine.Cards.*" should find all top-level types in the Cards namespace.
@@ -138,21 +120,7 @@ func TestCSharpNamespace_Regression_NamespaceWildcard(t *testing.T) {
 // BEFORE FIX: 0 results (parent was "" so wildcard parent filter excluded them)
 // AFTER FIX:  1 result (RunnerCard with parent="Company.GameEngine.Cards")
 func TestCSharpNamespace_Regression_WildcardParent(t *testing.T) {
-	m := newTestMuncher()
-	symbols, err := m.GetSymbols("cards.cs", []byte(csharpNamespaceFixture))
-	if err != nil {
-		t.Fatalf("GetSymbols: %v", err)
-	}
-
-	db := openTestDB(t, t.TempDir())
-	if err := WriteFile(db, "cards.cs", FileEntry{
-		Language:  "csharp",
-		SHA256:    "test",
-		IndexedAt: time.Now().UTC(),
-		Symbols:   symbols,
-	}); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+	db := seedCSharpNamespaceDB(t)
 
 	// "*.RunnerCard" — find RunnerCard in any parent.
 	// BEFORE: 0 results (parent was empty, wildcard requires non-empty)
@@ -176,21 +144,7 @@ func TestCSharpNamespace_Regression_WildcardParent(t *testing.T) {
 // BEFORE FIX: 0 results (namespaces were not indexed)
 // AFTER FIX:  2 results (Company.GameEngine and Cards)
 func TestCSharpNamespace_Regression_NamespaceType(t *testing.T) {
-	m := newTestMuncher()
-	symbols, err := m.GetSymbols("cards.cs", []byte(csharpNamespaceFixture))
-	if err != nil {
-		t.Fatalf("GetSymbols: %v", err)
-	}
-
-	db := openTestDB(t, t.TempDir())
-	if err := WriteFile(db, "cards.cs", FileEntry{
-		Language:  "csharp",
-		SHA256:    "test",
-		IndexedAt: time.Now().UTC(),
-		Symbols:   symbols,
-	}); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+	db := seedCSharpNamespaceDB(t)
 
 	// "--type namespace" should find both namespaces.
 	// BEFORE: 0 results
@@ -225,21 +179,7 @@ func TestCSharpNamespace_Regression_NamespaceType(t *testing.T) {
 // BEFORE FIX: "A.B.C" → parent="A", name="B.C" (wrong — no match)
 // AFTER FIX:  "A.B.C" → parent="A.B", name="C" (correct)
 func TestCSharpNamespace_Regression_FQNDotNotation(t *testing.T) {
-	m := newTestMuncher()
-	symbols, err := m.GetSymbols("cards.cs", []byte(csharpNamespaceFixture))
-	if err != nil {
-		t.Fatalf("GetSymbols: %v", err)
-	}
-
-	db := openTestDB(t, t.TempDir())
-	if err := WriteFile(db, "cards.cs", FileEntry{
-		Language:  "csharp",
-		SHA256:    "test",
-		IndexedAt: time.Now().UTC(),
-		Symbols:   symbols,
-	}); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+	db := seedCSharpNamespaceDB(t)
 
 	// "Company.GameEngine.Cards.RunnerCard" — FQN exact match.
 	// BEFORE: parent="Company", name="GameEngine.Cards.RunnerCard" → 0 results
@@ -266,21 +206,7 @@ func TestCSharpNamespace_Regression_FQNDotNotation(t *testing.T) {
 // "CardBase.Play" should still find the Play method with parent=CardBase,
 // NOT parent="Company.GameEngine.Cards" (the namespace).
 func TestCSharpNamespace_Regression_MethodParentUnchanged(t *testing.T) {
-	m := newTestMuncher()
-	symbols, err := m.GetSymbols("cards.cs", []byte(csharpNamespaceFixture))
-	if err != nil {
-		t.Fatalf("GetSymbols: %v", err)
-	}
-
-	db := openTestDB(t, t.TempDir())
-	if err := WriteFile(db, "cards.cs", FileEntry{
-		Language:  "csharp",
-		SHA256:    "test",
-		IndexedAt: time.Now().UTC(),
-		Symbols:   symbols,
-	}); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+	db := seedCSharpNamespaceDB(t)
 
 	// "CardBase.Play" — method inside class, not namespace.
 	got, err := SearchSymbols(db, SearchQuery{Name: "CardBase.Play"})

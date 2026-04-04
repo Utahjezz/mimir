@@ -32,6 +32,7 @@ func runSearchCmd(t *testing.T, root, name string, noRefresh bool) (string, erro
 	prevFuzzy := searchFuzzy
 	prevType := searchType
 	prevFile := searchFile
+	prevLimit := searchLimit
 	t.Cleanup(func() {
 		searchName = prevName
 		searchNoRefresh = prevNoRefresh
@@ -41,6 +42,7 @@ func runSearchCmd(t *testing.T, root, name string, noRefresh bool) (string, erro
 		searchFuzzy = prevFuzzy
 		searchType = prevType
 		searchFile = prevFile
+		searchLimit = prevLimit
 	})
 
 	searchName = name
@@ -50,6 +52,7 @@ func runSearchCmd(t *testing.T, root, name string, noRefresh bool) (string, erro
 	searchFuzzy = ""
 	searchType = ""
 	searchFile = ""
+	searchLimit = 0
 
 	err := runSearch(cmd, []string{root})
 	return out.String(), err
@@ -240,5 +243,33 @@ func TestAutoRefresh_ZeroThreshold_AlwaysRefreshes(t *testing.T) {
 	}
 	if out == "" || out == "no symbols found\n" {
 		t.Errorf("zero threshold should always re-walk; SecondSymbol should appear, got: %q", out)
+	}
+}
+
+// --- --limit validation ---
+
+// TestSearch_NegativeLimit_ReturnsError verifies that passing a negative value
+// to --limit is rejected early with a clear error message, before any DB access.
+func TestSearch_NegativeLimit_ReturnsError(t *testing.T) {
+	cmd := &cobra.Command{}
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+
+	prevLimit := searchLimit
+	prevWorkspace := searchWorkspace
+	t.Cleanup(func() {
+		searchLimit = prevLimit
+		searchWorkspace = prevWorkspace
+	})
+
+	searchLimit = -1
+	searchWorkspace = ""
+
+	err := runSearch(cmd, []string{"/nonexistent/root"})
+	if err == nil {
+		t.Fatal("expected an error for --limit=-1, got nil")
+	}
+	if !strings.Contains(err.Error(), "--limit must be >= 0") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
