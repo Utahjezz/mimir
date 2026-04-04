@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"unicode"
@@ -29,14 +30,19 @@ var parentTypes = map[SymbolType]bool{
 	Class:     true,
 	Interface: true,
 	Enum:      true,
+	Namespace: true,
 }
 
 // childTypes are the symbol types that receive a Parent when nested inside a
 // parentType. Function is included for constructors (C#/JS) but the assignment
 // only fires when the function's start line falls inside the parent's range.
 var childTypes = map[SymbolType]bool{
-	Method:   true,
-	Variable: true, // properties
+	Method:    true,
+	Variable:  true, // properties
+	Class:     true,
+	Interface: true,
+	Enum:      true,
+	Namespace: true,
 }
 
 // assignParents post-processes a flat symbol slice (as returned by tree-sitter
@@ -50,6 +56,7 @@ func assignParents(symbols []SymbolInfo) []SymbolInfo {
 	type frame struct {
 		name    string
 		endLine int
+		symType SymbolType
 	}
 
 	var stack []frame
@@ -67,7 +74,14 @@ func assignParents(symbols []SymbolInfo) []SymbolInfo {
 
 		// If this symbol is itself a container, push it.
 		if parentTypes[s.Type] {
-			stack = append(stack, frame{name: s.Name, endLine: s.EndLine})
+			frameName := s.Name
+			// FQN concatenation: namespace-on-namespace stacking builds the
+			// fully-qualified name so nested namespaces produce correct parent
+			// values (e.g. "Company.Platform.Services" for a class inside both).
+			if s.Type == Namespace && len(stack) > 0 && stack[len(stack)-1].symType == Namespace {
+				frameName = stack[len(stack)-1].name + "." + s.Name
+			}
+			stack = append(stack, frame{name: frameName, endLine: s.EndLine, symType: s.Type})
 		}
 	}
 
@@ -135,11 +149,27 @@ func runQuery(entry langEntry, code []byte) ([]SymbolInfo, error) {
 			continue
 		}
 
+		startLine := int((*node).StartPosition().Row) + 1
+		endLine := int((*node).EndPosition().Row) + 1
+
+		// File-scoped namespace declarations (C# 10+: "namespace Foo;") span
+		// only their own declaration line in the syntax tree because the grammar
+		// does not wrap subsequent declarations as children. Extend the effective
+		// end line to the last line of the file so assignParents keeps the
+		// namespace on the stack for all symbols that follow it.
+		//
+		// We check the node kind instead of startLine == endLine to avoid
+		// accidentally triggering on single-line block-scoped namespaces
+		// (e.g. "namespace Foo { }").
+		if symType == Namespace && (*node).Kind() == "file_scoped_namespace_declaration" {
+			endLine = bytes.Count(code, []byte("\n")) + 1
+		}
+
 		symbols = append(symbols, SymbolInfo{
 			Name:        name,
 			Type:        symType,
-			StartLine:   int((*node).StartPosition().Row) + 1,
-			EndLine:     int((*node).EndPosition().Row) + 1,
+			StartLine:   startLine,
+			EndLine:     endLine,
 			BodySnippet: bodySnippetFromNode(node, code),
 		})
 	}

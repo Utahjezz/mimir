@@ -352,6 +352,249 @@ public class Counter {
 	}
 }
 
+// --- namespace declarations ---
+
+func TestGetSymbols_CSharp_Namespace_Simple(t *testing.T) {
+	const fixture = `
+namespace DataAccess {
+    public class UserRepository {
+        public void Save() {}
+    }
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("repo.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := byNameMap(symbols)
+	s, ok := byName["DataAccess"]
+	if !ok {
+		t.Fatal(`symbol "DataAccess" not found`)
+	}
+	if s.Type != Namespace {
+		t.Errorf(`"DataAccess": got type %q, want %q`, s.Type, Namespace)
+	}
+}
+
+func TestGetSymbols_CSharp_Namespace_AsParent(t *testing.T) {
+	const fixture = `
+namespace DataAccess {
+    public class UserRepository {
+        public void Save() {}
+    }
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("repo.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// UserRepository should have parent "DataAccess"
+	for _, s := range symbols {
+		if s.Name == "UserRepository" {
+			if s.Parent != "DataAccess" {
+				t.Errorf(`"UserRepository" parent: got %q, want %q`, s.Parent, "DataAccess")
+			}
+			return
+		}
+	}
+	t.Fatal(`symbol "UserRepository" not found`)
+}
+
+func TestGetSymbols_CSharp_Namespace_NestedFQN(t *testing.T) {
+	const fixture = `
+namespace Company.Platform {
+    namespace Services {
+        public class OrderService {
+            public void PlaceOrder() {}
+        }
+        public interface IPaymentGateway {
+            void Charge();
+        }
+    }
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("services.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	type key struct{ name, typ string }
+	byKey := make(map[key]SymbolInfo, len(symbols))
+	for _, s := range symbols {
+		byKey[key{s.Name, string(s.Type)}] = s
+	}
+
+	cases := []struct {
+		name       string
+		typ        SymbolType
+		wantParent string
+	}{
+		{"Company.Platform", Namespace, ""},
+		{"Services", Namespace, "Company.Platform"},
+		{"OrderService", Class, "Company.Platform.Services"},
+		{"PlaceOrder", Method, "OrderService"},
+		{"IPaymentGateway", Interface, "Company.Platform.Services"},
+		{"Charge", Method, "IPaymentGateway"},
+	}
+
+	for _, tc := range cases {
+		s, ok := byKey[key{tc.name, string(tc.typ)}]
+		if !ok {
+			t.Errorf("symbol %q (type %s) not found", tc.name, tc.typ)
+			continue
+		}
+		if s.Parent != tc.wantParent {
+			t.Errorf("%q parent: got %q, want %q", tc.name, s.Parent, tc.wantParent)
+		}
+	}
+}
+
+func TestGetSymbols_CSharp_Namespace_FileScoped(t *testing.T) {
+	const fixture = `
+namespace Company.Platform.Services;
+
+public class NotificationService {
+    public void Send(string message) {}
+}
+
+public enum Priority { Low, Medium, High }
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("notification.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	type key struct{ name, typ string }
+	byKey := make(map[key]SymbolInfo, len(symbols))
+	for _, s := range symbols {
+		byKey[key{s.Name, string(s.Type)}] = s
+	}
+
+	cases := []struct {
+		name       string
+		typ        SymbolType
+		wantParent string
+	}{
+		{"Company.Platform.Services", Namespace, ""},
+		{"NotificationService", Class, "Company.Platform.Services"},
+		{"Send", Method, "NotificationService"},
+		{"Priority", Enum, "Company.Platform.Services"},
+	}
+
+	for _, tc := range cases {
+		s, ok := byKey[key{tc.name, string(tc.typ)}]
+		if !ok {
+			t.Errorf("symbol %q (type %s) not found", tc.name, tc.typ)
+			continue
+		}
+		if s.Parent != tc.wantParent {
+			t.Errorf("%q parent: got %q, want %q", tc.name, s.Parent, tc.wantParent)
+		}
+	}
+}
+
+func TestGetSymbols_CSharp_Namespace_NestedClass(t *testing.T) {
+	const fixture = `
+namespace Models {
+    public class Order {
+        public class LineItem {
+            public decimal Price { get; set; }
+        }
+        public void Submit() {}
+    }
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("order.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	type key struct{ name, typ string }
+	byKey := make(map[key]SymbolInfo, len(symbols))
+	for _, s := range symbols {
+		byKey[key{s.Name, string(s.Type)}] = s
+	}
+
+	cases := []struct {
+		name       string
+		typ        SymbolType
+		wantParent string
+	}{
+		{"Models", Namespace, ""},
+		{"Order", Class, "Models"},
+		{"LineItem", Class, "Order"},
+		{"Price", Variable, "LineItem"},
+		{"Submit", Method, "Order"},
+	}
+
+	for _, tc := range cases {
+		s, ok := byKey[key{tc.name, string(tc.typ)}]
+		if !ok {
+			t.Errorf("symbol %q (type %s) not found", tc.name, tc.typ)
+			continue
+		}
+		if s.Parent != tc.wantParent {
+			t.Errorf("%q parent: got %q, want %q", tc.name, s.Parent, tc.wantParent)
+		}
+	}
+}
+
+func TestGetSymbols_CSharp_Namespace_Multiple(t *testing.T) {
+	const fixture = `
+namespace Contracts {
+    public interface ILogger {
+        void Log(string msg);
+    }
+}
+
+namespace Infrastructure {
+    public class ConsoleLogger {
+        public void Log(string msg) {}
+    }
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("logging.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	type key struct{ name, typ string }
+	byKey := make(map[key]SymbolInfo, len(symbols))
+	for _, s := range symbols {
+		byKey[key{s.Name, string(s.Type)}] = s
+	}
+
+	cases := []struct {
+		name       string
+		typ        SymbolType
+		wantParent string
+	}{
+		{"Contracts", Namespace, ""},
+		{"ILogger", Interface, "Contracts"},
+		{"Infrastructure", Namespace, ""},
+		{"ConsoleLogger", Class, "Infrastructure"},
+	}
+
+	for _, tc := range cases {
+		s, ok := byKey[key{tc.name, string(tc.typ)}]
+		if !ok {
+			t.Errorf("symbol %q (type %s) not found", tc.name, tc.typ)
+			continue
+		}
+		if s.Parent != tc.wantParent {
+			t.Errorf("%q parent: got %q, want %q", tc.name, s.Parent, tc.wantParent)
+		}
+	}
+}
+
 // --- line ranges are sensible ---
 
 func TestGetSymbols_CSharp_LineRanges(t *testing.T) {
