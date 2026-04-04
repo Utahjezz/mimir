@@ -15,6 +15,7 @@ var (
 	searchFuzzy     string
 	searchType      string
 	searchFile      string
+	searchLimit     int
 	searchJSON      bool
 	searchNoRefresh bool
 	searchWorkspace string
@@ -38,6 +39,9 @@ When --workspace is set, [root] is ignored and the search fans out across all re
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
+	if searchLimit < 0 {
+		return fmt.Errorf("--limit must be >= 0 (0 = unlimited, got %d)", searchLimit)
+	}
 	if searchWorkspace != "" {
 		return runSearchWorkspace(cmd, args)
 	}
@@ -66,6 +70,7 @@ func runSearchSingle(cmd *cobra.Command, root string) error {
 		FuzzyName: searchFuzzy,
 		Type:      indexer.SymbolType(searchType),
 		FilePath:  searchFile,
+		Limit:     searchLimit,
 	}
 
 	results, err := indexer.SearchSymbols(db, q)
@@ -112,6 +117,7 @@ func runSearchWorkspace(cmd *cobra.Command, _ []string) error {
 		FuzzyName: searchFuzzy,
 		Type:      indexer.SymbolType(searchType),
 		FilePath:  searchFile,
+		Limit:     searchLimit,
 	}
 
 	var all []WorkspaceSymbolRow

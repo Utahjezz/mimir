@@ -294,6 +294,64 @@ namespace MyApp {
 	_ = cases // used above individually
 }
 
+// --- record ---
+
+func TestGetSymbols_CSharp_Record(t *testing.T) {
+	const fixture = `
+record Point(int X, int Y);
+record class Person(string Name);
+record struct Coord(double Lat, double Lon);
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("records.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := byNameMap(symbols)
+
+	for _, name := range []string{"Point", "Person", "Coord"} {
+		s, ok := byName[name]
+		if !ok {
+			t.Errorf("record %q not found", name)
+			continue
+		}
+		if s.Type != Class {
+			t.Errorf("%q: got type %q, want %q", name, s.Type, Class)
+		}
+	}
+}
+
+// --- field ---
+
+func TestGetSymbols_CSharp_Field(t *testing.T) {
+	const fixture = `
+public class Counter {
+    public int Count;
+    private string _name;
+    protected readonly bool _active;
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("counter.cs", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := byNameMap(symbols)
+
+	for _, name := range []string{"Count", "_name", "_active"} {
+		s, ok := byName[name]
+		if !ok {
+			t.Errorf("field %q not found", name)
+			continue
+		}
+		if s.Type != Variable {
+			t.Errorf("%q: got type %q, want %q", name, s.Type, Variable)
+		}
+	}
+}
+
 // --- line ranges are sensible ---
 
 func TestGetSymbols_CSharp_LineRanges(t *testing.T) {

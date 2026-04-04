@@ -323,6 +323,39 @@ func TestGetSymbols_TSX_FunctionComponent(t *testing.T) {
 	}
 }
 
+// --- generator functions ---
+
+func TestGetSymbols_TS_GeneratorFunction(t *testing.T) {
+	const fixture = `
+function* ids() {
+  let i = 0;
+  while (true) yield i++;
+}
+
+export function* stream(data: string[]) {
+  for (const item of data) yield item;
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("gen.ts", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := byNameMap(symbols)
+
+	for _, name := range []string{"ids", "stream"} {
+		s, ok := byName[name]
+		if !ok {
+			t.Errorf("generator function %q not found", name)
+			continue
+		}
+		if s.Type != Function {
+			t.Errorf("%q: got type %q, want %q", name, s.Type, Function)
+		}
+	}
+}
+
 // --- line number sanity ---
 
 func TestGetSymbols_TS_LineNumbers(t *testing.T) {

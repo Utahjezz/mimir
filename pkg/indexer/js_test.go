@@ -248,6 +248,39 @@ export default class UserService {
 	}
 }
 
+// --- generator functions ---
+
+func TestGetSymbols_JS_GeneratorFunction(t *testing.T) {
+	const fixture = `
+function* ids() {
+  let i = 0;
+  while (true) yield i++;
+}
+
+function* range(start, end) {
+  for (let i = start; i < end; i++) yield i;
+}
+`
+	m := newTestMuncher()
+	symbols, err := m.GetSymbols("gen.js", []byte(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := byNameMap(symbols)
+
+	for _, name := range []string{"ids", "range"} {
+		s, ok := byName[name]
+		if !ok {
+			t.Errorf("generator function %q not found", name)
+			continue
+		}
+		if s.Type != Function {
+			t.Errorf("%q: got type %q, want %q", name, s.Type, Function)
+		}
+	}
+}
+
 // --- CJS (.cjs) ---
 
 func TestGetSymbols_JS_CJSExtension(t *testing.T) {

@@ -38,6 +38,9 @@ type SearchQuery struct {
 
 	// FilePath filters results to symbols in files whose path contains this substring.
 	FilePath string
+
+	// Limit caps the number of rows returned. Zero means no limit.
+	Limit int
 }
 
 // ParseDotNotation detects "Parent.Name" syntax in q.Name / q.NameLike and
@@ -132,6 +135,9 @@ func searchSymbolsSQL(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 		query += " WHERE " + strings.Join(conds, " AND ")
 	}
 	query += " ORDER BY file_path, start_line"
+	if q.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", q.Limit)
+	}
 
 	return scanSymbolRows(db.Query(query, args...))
 }
@@ -141,7 +147,7 @@ func searchSymbolsSQL(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 //
 // When the query contains no FTS5 operators (* " : ^), each query word is split
 // via splitIdentifier and matched against the name_tokens column so that, for
-// example, "cesarina address" matches useCesarinaPrimaryAddress. A trailing *
+// example, "user address" matches getUserPrimaryAddress. A trailing *
 // is appended to every token so prefix matching still works (e.g. "addr").
 //
 // When the query already contains FTS5 operators the raw query is forwarded
@@ -156,8 +162,8 @@ func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 		ftsQuery = q.FuzzyName
 	} else {
 		// Expand each query word to match against name_tokens OR body_snippet.
-		// "cesarina address" →
-		//   "(name_tokens : cesarina* OR body_snippet : cesarina*) AND
+		// "user address" →
+		//   "(name_tokens : user* OR body_snippet : user*) AND
 		//    (name_tokens : address*  OR body_snippet : address*)"
 		words := tokenizeQuery(q.FuzzyName)
 		if len(words) == 0 {
@@ -200,18 +206,32 @@ func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 	if len(conds) > 0 {
 		query += " AND " + strings.Join(conds, " AND ")
 	}
-	query += " ORDER BY s.file_path, s.start_line"
+	// Order by FTS5 BM25 rank (ascending — rank is negative, so more relevant
+	// rows have a more-negative value and sort first).
+	query += " ORDER BY f.rank"
+	if q.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", q.Limit)
+	}
 
 	return scanSymbolRows(db.Query(query, args...))
 }
 
 // scanSymbolRows reads a *sql.Rows result into a []SymbolRow slice.
+// It deduplicates rows by (FilePath, Name, Type, StartLine) to guard against
+// pre-existing indexes that were built before the UNIQUE constraint was added.
 func scanSymbolRows(rows *sql.Rows, err error) ([]SymbolRow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("SearchSymbols query: %w", err)
 	}
 	defer rows.Close()
 
+	type dedupKey struct {
+		file      string
+		name      string
+		typ       string
+		startLine int
+	}
+	seen := make(map[dedupKey]struct{})
 	results := []SymbolRow{}
 	for rows.Next() {
 		var r SymbolRow
@@ -220,6 +240,11 @@ func scanSymbolRows(rows *sql.Rows, err error) ([]SymbolRow, error) {
 			return nil, fmt.Errorf("SearchSymbols scan: %w", err)
 		}
 		r.Type = SymbolType(typ)
+		key := dedupKey{r.FilePath, r.Name, typ, r.StartLine}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
 		results = append(results, r)
 	}
 	if err := rows.Err(); err != nil {

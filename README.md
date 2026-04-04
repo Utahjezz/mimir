@@ -13,13 +13,13 @@ mimir dead ./myrepo --unexported
 
 ## Features
 
-- **9 CLI commands + workspace sub-commands** — index, search, symbol lookup, cross-reference tracing, dead-code detection, file tree, report; plus `workspace` to manage named collections of repos and declare cross-repo symbol links
+- **10 CLI commands + workspace sub-commands** — index, search, symbol lookup, cross-reference tracing, import tracking, dead-code detection, file tree, report; plus `workspace` to manage named collections of repos and declare cross-repo symbol links
 - **6 languages** — Go, JavaScript, TypeScript, TSX, Python, C#
 - **Incremental re-index** — mtime+size stat-skip; only changed files are re-parsed
 - **Auto-refresh** — query commands transparently re-index stale files; no manual `mimir index` needed between edits
 - **`--json` on every command** — pipe to `jq` or consume programmatically
 - **Single binary** — requires Go 1.26+ and a C compiler (CGO, via tree-sitter)
-- **FTS5 full-text search** — fuzzy symbol search with prefix wildcards (`proc*`)
+- **FTS5 full-text search** — fuzzy symbol search with BM25 relevance ranking; automatic camelCase/snake_case splitting (`processOrder` matches both `process` and `order`); string literals normalised so `application/json` is searchable as `application json`
 - **Dot-notation** — `Class.method`, `*.method`, `Class.*` in `--name` / `--like`
 
 ---
@@ -85,11 +85,12 @@ mimir dead ./myrepo --unexported
 | Command | Syntax | Description |
 |---------|--------|-------------|
 | `index` | `mimir index <path>` | Walk and index all supported source files |
-| `symbols` | `mimir symbols <file>` | List all symbols in a file (no index needed) |
+| `symbols` | `mimir symbols <file>` | List all symbols in a file, plus its imports (no index needed) |
 | `symbol` | `mimir symbol <file> <name>` | Show a symbol's metadata and source body |
 | `search` | `mimir search <root> [flags]` | Search indexed symbols with filters |
 | `report` | `mimir report <root>` | Summary: files, symbols, language breakdown |
 | `refs` | `mimir refs <root> [flags]` | Query call-reference table |
+| `imports` | `mimir imports <root> [flags]` | Query import/using statements |
 | `tree` | `mimir tree <root> [--files]` | Directory tree with file/symbol counts |
 | `callers` | `mimir callers <root> <symbol>` | All call sites that invoke a symbol |
 | `dead` | `mimir dead <root> [flags]` | Symbols with no recorded callers |
@@ -99,7 +100,13 @@ mimir dead ./myrepo --unexported
 ```
 --name   <str>   Exact symbol name (supports dot-notation: Class.method)
 --like   <str>   Prefix match (LIKE)
---fuzzy  <str>   FTS5 match — use * for prefix: "proc*"
+--fuzzy  <str>   FTS5 full-text match; results ordered by BM25 relevance (best first).
+                 camelCase/snake_case queries are split automatically: "processOrder"
+                 matches symbols containing both "process" and "order". String literals
+                 in the body snippet are normalised (slashes/hyphens/colons treated as
+                 word boundaries), so "application/json" is searchable as "application json".
+                 Use FTS5 operators (* " : ^) to bypass splitting and pass query unchanged.
+--limit  <N>     Maximum number of results to return (default 0 = unlimited)
 --type   <str>   Filter by type: function | method | class | interface |
                                type_alias | enum | namespace | variable
 --file   <str>   Filter by file path substring
@@ -126,6 +133,18 @@ mimir dead ./myrepo --unexported
 --json           Output as JSON
 --no-refresh     Skip automatic re-index before querying
 ```
+
+### `mimir imports` flags
+
+```
+--file       <str>   All imports found in this file (relative path as indexed)
+--module     <str>   All files that import this module path
+--workspace  <name>  Fan out across all repos in the named workspace
+--json               Output as JSON array of {file_path, import_path, alias, line}
+--no-refresh         Skip automatic re-index before querying
+```
+
+With no filter flags, returns all recorded imports across the repo. Supported languages: Go, TypeScript, TSX, JavaScript, Python, C#.
 
 ### Global flags (all commands)
 
@@ -168,7 +187,7 @@ mimir workspace show
 | `workspace show` | `mimir workspace show [workspace]` | List repositories in a workspace |
 | `workspace index` | `mimir workspace index [workspace] [flags]` | Index all repos in a workspace |
 | `workspace link` | `mimir workspace link <src-repo-id> <src-symbol> <dst-repo-id> <dst-symbol> [workspace]` | Declare a cross-repo symbol link |
-| `workspace links` | `mimir workspace links [--from <repo>] [--src-symbol <name>] [--dst-symbol <name>] [workspace]` | List cross-repo symbol links |
+| `workspace links` | `mimir workspace links [--from <repo>] [--src-symbol <name>] [--dst-symbol <name>] [--check] [workspace]` | List cross-repo symbol links |
 | `workspace unlink` | `mimir workspace unlink <id> [workspace]` | Remove a cross-repo symbol link by ID |
 
 ### `mimir workspace index` flags
@@ -194,6 +213,7 @@ mimir workspace show
 --from       <repo-id>   Filter links by source repo ID (defaults to cwd repo; lists all if cwd not in workspace)
 --src-symbol <name>      Filter links by source symbol name (exact match)
 --dst-symbol <name>      Filter links by destination symbol name (exact match)
+--check                  Validate that symbols and file paths still exist; reports broken links
 --json                   Output as JSON
 ```
 
@@ -252,6 +272,9 @@ mimir workspace links --from backend-a1b2c3d4 --dst-symbol PaymentClient.Charge
 # JSON output for scripting
 mimir workspace links --json | jq '.[].SrcSymbol'
 
+# Validate all links (check if symbols still exist and file paths match)
+mimir workspace links --check
+
 # Remove a link by ID
 mimir workspace unlink 3
 ```
@@ -263,6 +286,21 @@ mimir workspace unlink 3
       note: async via Kafka topic orders.placed
       protocol=grpc
       transport=kafka
+```
+
+**Link validation output (`--check`):**
+```
+#1    MyFunc (abc123)
+      → OtherFunc (def456)
+      [CHECK] src: OK (pkg/orders.go)
+      [CHECK] dst: OK (pkg/payments.go)
+
+#2    MissingSymbol (abc123)
+      → OtherFunc (def456)
+      [CHECK] src: symbol "MissingSymbol" not found in repo
+      [CHECK] dst: OK (pkg/payments.go)
+
+⚠ 1 broken link(s) found. Run `mimir workspace unlink <id>` to remove.
 ```
 
 ---
@@ -339,7 +377,7 @@ mimir report ./myrepo --json | jq '.Languages'
 
 1. **Walk** — directory tree skipping dot-dirs (`.git`, `.env`, …) and `node_modules`/`vendor`
 2. **Stat-skip** — compare mtime+size against stored `FileMeta`; skip if unchanged
-3. **Parse** — tree-sitter extracts symbols and call references per file
+3. **Parse** — tree-sitter extracts symbols, call references, and import/using statements per file
 4. **Write** — single collector goroutine writes to SQLite (no locking errors)
 5. **Query** — cobra commands open the index, run queries, and return results (read-only when the index is up to date)
 6. **Auto-refresh** — query commands check `last_indexed_at` in meta; if stale they transparently re-run steps 1–4 and update SQLite before returning results
@@ -412,6 +450,8 @@ Once installed, Claude can use mimir commands directly during conversations. Typ
 | "index this repo" | `mimir index` + `mimir report` + `mimir tree` |
 | "find symbol X" | `mimir search --name` or `mimir symbol` |
 | "who calls this function?" | `mimir callers` with depth traversal |
+| "what does this file import?" | `mimir imports --file` |
+| "who imports this module?" | `mimir imports --module` |
 | "show dead code" | `mimir dead --unexported` |
 | "trace the call graph" | `mimir refs --caller` + `mimir callers` |
 | "explore this codebase" | Full orientation workflow (index → report → tree → hotspots) |
@@ -421,6 +461,7 @@ Once installed, Claude can use mimir commands directly during conversations. Typ
 - **First-time orientation** — index, report, tree, and hotspot analysis
 - **Symbol lookup** — exact name, prefix, fuzzy, or dot-notation search
 - **Impact analysis** — trace callers and callees before refactoring
+- **Dependency analysis** — find all imports in a file or all files importing a module
 - **Dead code audit** — find unexported symbols with no recorded callers
 - **Cross-repo exploration** — workspace commands for multi-repo projects
 
