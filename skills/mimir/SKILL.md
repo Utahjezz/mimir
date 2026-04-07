@@ -24,6 +24,8 @@ metadata:
     - "**/*.js"
     - "**/*.go"
     - "**/*.cs"
+    - "**/*.rs"
+    - "**/*.swift"
   bashPattern:
     - "mimir.*"
 ---
@@ -63,7 +65,7 @@ mimir tree <path> --depth 3           # Directory structure with symbol counts
 
 ## Supported Languages
 
-`.py` `.pyw` `.js` `.jsx` `.mjs` `.cjs` `.ts` `.mts` `.cts` `.tsx` `.go` `.cs`
+`.py` `.pyw` `.js` `.jsx` `.mjs` `.cjs` `.ts` `.mts` `.cts` `.tsx` `.go` `.cs` `.rs` `.swift`
 
 All other file types are silently skipped. Dot-directories (`.git`, `.venv`), `node_modules`, and `vendor` are always skipped.
 
