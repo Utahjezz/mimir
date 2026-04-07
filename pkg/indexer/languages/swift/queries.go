@@ -101,8 +101,12 @@ const Queries = `
 //   - import Foundation
 //   - import UIKit
 //   - import struct Foundation.URL
+//
+// The @path capture targets the identifier node directly (not its
+// simple_identifier children) so that qualified imports such as
+// "import Foundation.URL" are recorded as the full dotted path
+// ("Foundation.URL") rather than just the last segment ("URL").
 const ImportQueries = `
 (import_declaration
-  (identifier
-    (simple_identifier) @path)) @import
+  (identifier) @path) @import
 `

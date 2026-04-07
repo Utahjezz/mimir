@@ -180,6 +180,49 @@ func TestExtractImports_CSharp_Aliased(t *testing.T) {
 	t.Errorf("expected aliased import Alias='System.Collections', got %v", imports)
 }
 
+// --- ExtractImports: Swift ---
+
+const swiftImportFixture = `import Foundation
+import UIKit
+import Foundation.URL
+import struct Foundation.URL
+`
+
+func TestExtractImports_Swift_Plain(t *testing.T) {
+	assertImportPath(t, "swift", swiftImportFixture, "Foundation")
+}
+
+func TestExtractImports_Swift_Plain_UIKit(t *testing.T) {
+	assertImportPath(t, "swift", swiftImportFixture, "UIKit")
+}
+
+// TestExtractImports_Swift_QualifiedDotted verifies that a qualified import
+// such as "import Foundation.URL" is stored as the full path "Foundation.URL",
+// not just the last segment "URL".
+func TestExtractImports_Swift_QualifiedDotted(t *testing.T) {
+	assertImportPath(t, "swift", swiftImportFixture, "Foundation.URL")
+}
+
+// TestExtractImports_Swift_KindQualified verifies that a kind-qualified import
+// such as "import struct Foundation.URL" captures the dotted path "Foundation.URL".
+func TestExtractImports_Swift_KindQualified(t *testing.T) {
+	assertImportPath(t, "swift", swiftImportFixture, "Foundation.URL")
+}
+
+// TestExtractImports_Swift_NoPartialSegment verifies that the bare last
+// segment "URL" is not stored as a standalone import path.
+func TestExtractImports_Swift_NoPartialSegment(t *testing.T) {
+	imports, err := ExtractImports("swift", []byte(swiftImportFixture))
+	if err != nil {
+		t.Fatalf("ExtractImports Swift: %v", err)
+	}
+	for _, imp := range imports {
+		if imp.ImportPath == "URL" {
+			t.Errorf("bare last segment %q must not be stored; want full path 'Foundation.URL'", imp.ImportPath)
+		}
+	}
+}
+
 // --- ExtractImports: same-line deduplication ---
 
 // TestExtractImports_Python_SameLine verifies that multiple imports on the
