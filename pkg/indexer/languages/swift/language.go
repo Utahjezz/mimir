@@ -1,7 +1,7 @@
 package swift
 
 import (
-	tree_sitter_swift "github.com/alex-pinkus/tree-sitter-swift/bindings/go"
+	tree_sitter_swift "github.com/Utahjezz/tree-sitter-swift/bindings/go"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
