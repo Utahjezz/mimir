@@ -26,7 +26,7 @@ async function run(cmd: ReturnType<typeof Bun.$>): Promise<string> {
 // ---------------------------------------------------------------------------
 export const index = tool({
   description:
-    "Walk a directory, parse all supported source files (Go, TS, JS, Python, C#), " +
+    "Walk a directory, parse all supported source files (Go, TS, JS, Python, C#, Rust, Swift), " +
     "and persist symbols + call references to the mimir SQLite index. " +
     "Must be run before any query command.",
   args: {

@@ -15,6 +15,7 @@ require (
 )
 
 require (
+	github.com/alex-pinkus/tree-sitter-swift v0.0.0-20250623040733-277b583bbb02 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

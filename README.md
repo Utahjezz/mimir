@@ -14,7 +14,7 @@ mimir dead ./myrepo --unexported
 ## Features
 
 - **10 CLI commands + workspace sub-commands** — index, search, symbol lookup, cross-reference tracing, import tracking, dead-code detection, file tree, report; plus `workspace` to manage named collections of repos and declare cross-repo symbol links
-- **6 languages** — Go, JavaScript, TypeScript, TSX, Python, C#
+- **8 languages** — Go, JavaScript, TypeScript, TSX, Python, C#, Rust, Swift
 - **Incremental re-index** — mtime+size stat-skip; only changed files are re-parsed
 - **Auto-refresh** — query commands transparently re-index stale files; no manual `mimir index` needed between edits
 - **`--json` on every command** — pipe to `jq` or consume programmatically
@@ -144,7 +144,7 @@ mimir dead ./myrepo --unexported
 --no-refresh         Skip automatic re-index before querying
 ```
 
-With no filter flags, returns all recorded imports across the repo. Supported languages: Go, TypeScript, TSX, JavaScript, Python, C#.
+With no filter flags, returns all recorded imports across the repo. Supported languages: Go, TypeScript, TSX, JavaScript, Python, C#, Rust, Swift.
 
 ### Global flags (all commands)
 
@@ -345,6 +345,8 @@ mimir --refresh-threshold=5m  search . --name "Foo"   # re-index at most once pe
 | TSX | `.tsx` |
 | Python | `.py` `.pyw` |
 | C# | `.cs` |
+| Rust | `.rs` |
+| Swift | `.swift` |
 
 Files with any other extension are silently skipped.
 

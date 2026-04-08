@@ -8,6 +8,7 @@ import (
 	"github.com/Utahjezz/mimir/pkg/indexer/languages/javascript"
 	"github.com/Utahjezz/mimir/pkg/indexer/languages/python"
 	"github.com/Utahjezz/mimir/pkg/indexer/languages/rust"
+	"github.com/Utahjezz/mimir/pkg/indexer/languages/swift"
 	"github.com/Utahjezz/mimir/pkg/indexer/languages/typescript"
 )
 
@@ -64,6 +65,11 @@ var registeredLanguages = []languageDefinition{
 		language:   rust.Language,
 		query:      rust.Queries,
 		extensions: rust.Extensions,
+	},
+	{
+		language:   swift.Language,
+		query:      swift.Queries,
+		extensions: swift.Extensions,
 	},
 }
 
@@ -141,6 +147,14 @@ var registeredCallLanguages = []struct {
 			language:  rust.Language,
 			callQuery: rust.CallQueries,
 			refQuery:  rust.RefQueries,
+		},
+	},
+	{
+		name: "swift",
+		callDefinition: callDefinition{
+			language:  swift.Language,
+			callQuery: swift.CallQueries,
+			refQuery:  swift.RefQueries,
 		},
 	},
 }
@@ -227,6 +241,13 @@ var registeredImportLanguages = []struct {
 		importDefinition: importDefinition{
 			language:    csharp.Language,
 			importQuery: csharp.ImportQueries,
+		},
+	},
+	{
+		name: "swift",
+		importDefinition: importDefinition{
+			language:    swift.Language,
+			importQuery: swift.ImportQueries,
 		},
 	},
 }
