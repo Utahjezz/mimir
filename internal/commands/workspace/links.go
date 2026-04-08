@@ -23,9 +23,12 @@ var workspaceLinksCmd = &cobra.Command{
 	Short: "List cross-repo symbol links in a workspace",
 	Long: `List all cross-repo symbol links in a workspace.
 
-Use --from to filter by source repository (defaults to the current directory).
+By default, filters to links where the current directory's repo appears as
+either the source OR the destination. This gives a complete view of a repo's
+cross-repo relationships regardless of direction.
 If the current directory is not registered in the workspace, all links are listed.
 
+Use --from to override the repo filter with an explicit path (also matches either side).
 Use --src-symbol to filter by the source symbol name (exact match).
 Use --dst-symbol to filter by the destination symbol name (exact match).`,
 	Args: cobra.RangeArgs(0, 1),
@@ -45,7 +48,7 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 	defer db.Close()
 
 	// Resolve --from: explicit flag > cwd > all links.
-	srcFilter := ""
+	repoFilter := ""
 	fromPath := workspaceLinksFrom
 	if fromPath == "" {
 		if cwd, err := os.Getwd(); err == nil {
@@ -60,15 +63,15 @@ func runWorkspaceLinks(cmd *cobra.Command, args []string) error {
 		}
 		for _, r := range repos {
 			if r.ID == repoID {
-				srcFilter = repoID
+				repoFilter = repoID
 				break
 			}
 		}
-		// If fromPath is not in the workspace, srcFilter stays "" → list all.
+		// If fromPath is not in the workspace, repoFilter stays "" → list all.
 	}
 
 	links, err := workspace.ListLinks(db, workspace.LinkQuery{
-		SrcRepoID: srcFilter,
+		RepoID:    repoFilter,
 		SrcSymbol: workspaceLinksSrcSymbol,
 		DstSymbol: workspaceLinksDstSymbol,
 	})

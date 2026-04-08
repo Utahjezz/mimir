@@ -697,10 +697,16 @@ export const workspace_link = tool({
 export const workspace_links = tool({
   description:
     "List cross-repo symbol links in a workspace. " +
-    "By default filters to links whose source repo matches the current directory; " +
-    "if cwd is not registered in the workspace all links are listed. " +
+    "By default filters to links where the current directory's repo appears as " +
+    "EITHER the source OR the destination — giving a complete view of all " +
+    "cross-repo relationships for that repo regardless of direction. " +
+    "If the current directory is not registered in the workspace, all links are listed. " +
     "Pass from='' (empty string) to explicitly list all links regardless of cwd. " +
-    "If workspace is omitted the current active workspace is used.",
+    "If workspace is omitted the current active workspace is used. " +
+    "IMPORTANT: 'No links found' when run from a registered repo directory means " +
+    "that repo has no declared cross-repo relationships (neither as caller nor callee). " +
+    "It does NOT mean the workspace is empty — run without --from or from an " +
+    "unregistered directory to see all links.",
   args: {
     workspace: tool.schema
       .string()
@@ -710,7 +716,8 @@ export const workspace_links = tool({
       .string()
       .optional()
       .describe(
-        "Filter by source repo path. Defaults to cwd. Pass empty string to list all links."
+        "Filter by repo path — returns links where this repo is either source OR destination. " +
+        "Defaults to cwd. Pass empty string to list all links."
       ),
     json: tool.schema
       .boolean()

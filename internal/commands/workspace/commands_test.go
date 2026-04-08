@@ -648,10 +648,13 @@ func TestRunWorkspaceLinks_ListsAll(t *testing.T) {
 	}
 }
 
-// TestRunWorkspaceLinks_FilterFrom verifies that --from filters to only links
-// whose src_repo_id matches the given path.
+// TestRunWorkspaceLinks_FilterFrom verifies that --from filters to links where
+// the given repo path appears as either src_repo_id OR dst_repo_id.
 func TestRunWorkspaceLinks_FilterFrom(t *testing.T) {
-	// Arrange: create two links from different source repos.
+	// Arrange: three repos, two links:
+	//   r1 → r2  (r1 is src)
+	//   r3 → r2  (r1 is not involved)
+	// Filtering by r1 must return only the first link.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	r1 := makeIndexedRepoForCmds(t)
 	r2 := makeIndexedRepoForCmds(t)
@@ -678,7 +681,7 @@ func TestRunWorkspaceLinks_FilterFrom(t *testing.T) {
 	// Act: filter to r1 only
 	out, err := runLinksCmd(t, []string{"filterws"}, r1, false)
 
-	// Assert: only r1's link appears
+	// Assert: only r1's link appears (r1 is src of link #1)
 	if err != nil {
 		t.Fatalf("runWorkspaceLinks --from r1: %v", err)
 	}
@@ -687,6 +690,62 @@ func TestRunWorkspaceLinks_FilterFrom(t *testing.T) {
 	}
 	if strings.Contains(out, r3ID) {
 		t.Errorf("r3 repoID %q should not appear when filtering by r1, got: %q", r3ID, out)
+	}
+}
+
+// TestRunWorkspaceLinks_FilterFrom_DstSide verifies that --from also returns
+// links where the given repo is the DESTINATION (not just the source).
+func TestRunWorkspaceLinks_FilterFrom_DstSide(t *testing.T) {
+	// Arrange: three repos, two links:
+	//   r1 → r2  (r2 is dst)
+	//   r3 → r1  (r1 is dst — this is the new case)
+	// Filtering by r1 must return BOTH links (r1 as src and r1 as dst).
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	r1 := makeIndexedRepoForCmds(t)
+	r2 := makeIndexedRepoForCmds(t)
+	r3 := makeIndexedRepoForCmds(t)
+	if err := runCreateCmd(t, "filterdstws"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	for _, p := range []string{r1, r2, r3} {
+		if err := runAddCmd(t, p, "filterdstws"); err != nil {
+			t.Fatalf("add %s: %v", p, err)
+		}
+	}
+	// r1 as src
+	if _, err := runLinkCmd(t, []string{indexer.RepoID(r1), "F", indexer.RepoID(r2), "F", "filterdstws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link r1→r2: %v", err)
+	}
+	// r1 as dst
+	if _, err := runLinkCmd(t, []string{indexer.RepoID(r3), "F", indexer.RepoID(r1), "F", "filterdstws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link r3→r1: %v", err)
+	}
+	// r2→r3: r1 not involved — must not appear
+	if _, err := runLinkCmd(t, []string{indexer.RepoID(r2), "F", indexer.RepoID(r3), "F", "filterdstws"}, "", "", "", nil); err != nil {
+		t.Fatalf("link r2→r3: %v", err)
+	}
+
+	r1ID := indexer.RepoID(r1)
+	r2ID := indexer.RepoID(r2)
+	r3ID := indexer.RepoID(r3)
+
+	// Act: filter by r1
+	out, err := runLinksCmd(t, []string{"filterdstws"}, r1, false)
+
+	// Assert: both links involving r1 appear; the r2→r3 link does not.
+	if err != nil {
+		t.Fatalf("runWorkspaceLinks --from r1 (dst-side): %v", err)
+	}
+	if !strings.Contains(out, r1ID) {
+		t.Errorf("expected r1 repoID %q in output, got: %q", r1ID, out)
+	}
+	// r2 and r3 both appear as the other side of r1's links — that's fine.
+	_ = r2ID
+	_ = r3ID
+	// Verify exactly 2 links are shown by counting "#" prefix occurrences.
+	linkCount := strings.Count(out, "#")
+	if linkCount != 2 {
+		t.Errorf("expected 2 links when filtering by r1 (src+dst), got %d: %q", linkCount, out)
 	}
 }
 
