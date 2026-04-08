@@ -416,3 +416,40 @@ func TestListLinks_FilterCombined(t *testing.T) {
 		}
 	}
 }
+
+// TestListLinks_FilterByRepoID verifies that RepoID matches links where the
+// repo appears as EITHER source or destination (the either-side filter).
+func TestListLinks_FilterByRepoID(t *testing.T) {
+	// Arrange: three repos, two links:
+	//   r1 → r2  (r1 is src, r2 is dst)
+	//   r3 → r1  (r1 is dst, r3 is src)
+	// Filtering by r1's ID must return both links.
+	tmp := t.TempDir()
+	wsDB := openFreshWorkspace(t, tmp)
+	r1 := makeIndexedRepo(t)
+	r2 := makeIndexedRepo(t)
+	r3 := makeIndexedRepo(t)
+	id1, _ := AddRepository(wsDB, r1)
+	id2, _ := AddRepository(wsDB, r2)
+	id3, _ := AddRepository(wsDB, r3)
+
+	CreateLink(wsDB, id1, "A", "", id2, "B", "", "") // r1 as src
+	CreateLink(wsDB, id3, "C", "", id1, "D", "", "") // r1 as dst
+	CreateLink(wsDB, id2, "E", "", id3, "F", "", "") // r1 not involved
+
+	// Act: filter by r1 — should return the first two links only.
+	links, err := ListLinks(wsDB, LinkQuery{RepoID: id1})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("ListLinks RepoID: %v", err)
+	}
+	if len(links) != 2 {
+		t.Fatalf("expected 2 links involving r1 (as src or dst), got %d", len(links))
+	}
+	for _, l := range links {
+		if l.SrcRepoID != id1 && l.DstRepoID != id1 {
+			t.Errorf("link #%d does not involve r1: src=%s dst=%s", l.ID, l.SrcRepoID, l.DstRepoID)
+		}
+	}
+}

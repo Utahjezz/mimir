@@ -44,8 +44,9 @@ func SetLinkMeta(db *sql.DB, linkID int64, key, value string) error {
 // LinkQuery holds optional filters for ListLinks.
 // Empty string fields are ignored (no filter applied).
 type LinkQuery struct {
-	SrcRepoID string // filter by source repo ID
-	DstRepoID string // filter by destination repo ID
+	SrcRepoID string // filter by source repo ID (exact match)
+	DstRepoID string // filter by destination repo ID (exact match)
+	RepoID    string // filter to links where this repo ID appears as either source OR destination
 	SrcSymbol string // filter by source symbol name (exact match)
 	DstSymbol string // filter by destination symbol name (exact match)
 }
@@ -68,6 +69,10 @@ func ListLinks(db *sql.DB, q LinkQuery) ([]Link, error) {
 	if q.DstRepoID != "" {
 		clauses = append(clauses, "dst_repo_id = ?")
 		args = append(args, q.DstRepoID)
+	}
+	if q.RepoID != "" {
+		clauses = append(clauses, "(src_repo_id = ? OR dst_repo_id = ?)")
+		args = append(args, q.RepoID, q.RepoID)
 	}
 	if q.SrcSymbol != "" {
 		clauses = append(clauses, "src_symbol = ?")
