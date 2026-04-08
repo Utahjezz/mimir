@@ -60,15 +60,19 @@ mimir workspace link backend-a1b2c3d4 OrderService.PlaceOrder \
 ```
 
 ### `mimir workspace links [workspace] [--from <path>] [--src-symbol <name>] [--dst-symbol <name>] [--check] [--json]`
-List links. Defaults to filtering by the repo containing the current working directory. To list all links, run from a directory that is not registered in the workspace.
+List links. By default filters to links where the current working directory's repo appears as **either source or destination** — giving a complete picture of all cross-repo relationships for that repo. To list all links, run from a directory that is not registered in the workspace, or pass `--from ''`.
 
 | Flag | Description |
 |------|-------------|
 | `--check` | Validate that symbols and file paths still exist in their respective repositories. Reports broken links (missing symbols or moved files). |
-| `--from <path>` | Filter links by source repository path |
+| `--from <path>` | Filter links by repository path — matches links where this repo is either source or destination |
 | `--src-symbol <name>` | Filter by source symbol name (exact match) |
 | `--dst-symbol <name>` | Filter by destination symbol name (exact match) |
 | `--json` | Output as JSON array |
+
+> **Note:** "No links found" when run from a registered repo means that repo has no declared
+> cross-repo relationships (neither as caller nor callee). It does **not** mean the workspace
+> is empty — run from an unregistered directory or pass `--from ''` to see all links.
 
 ```bash
 # List all links with validation
