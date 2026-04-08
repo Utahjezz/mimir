@@ -3,6 +3,7 @@ module github.com/Utahjezz/mimir
 go 1.26.1
 
 require (
+	github.com/Utahjezz/tree-sitter-swift v0.7.2
 	github.com/spf13/cobra v1.10.2
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-c-sharp v0.23.1
@@ -15,7 +16,6 @@ require (
 )
 
 require (
-	github.com/alex-pinkus/tree-sitter-swift v0.0.0-20250623040733-277b583bbb02 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

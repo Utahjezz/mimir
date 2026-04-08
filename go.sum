@@ -1,7 +1,5 @@
-github.com/alex-pinkus/tree-sitter-swift v0.0.0-20250623040733-277b583bbb02 h1:rBXLgl2Hx8uvgyk1962FPy6JF1LGR5zFCCHM0kVNMno=
-github.com/alex-pinkus/tree-sitter-swift v0.0.0-20250623040733-277b583bbb02/go.mod h1:nMZLtsEtko+0F2g09G5Tm16uRdDoczLZDE5O207ruYQ=
-github.com/alex-pinkus/tree-sitter-swift v0.0.0-20260406024421-da7f9370b70b h1:JyWzAbMDhDn0tNSRD+OYSX9IODCr/GXvYx2T/K7cLZs=
-github.com/alex-pinkus/tree-sitter-swift v0.0.0-20260406024421-da7f9370b70b/go.mod h1:nMZLtsEtko+0F2g09G5Tm16uRdDoczLZDE5O207ruYQ=
+github.com/Utahjezz/tree-sitter-swift v0.7.2 h1:G7PvSCJNF8GGAhbaKwgOv3zEaE5COwyOlEu/VnkOmcg=
+github.com/Utahjezz/tree-sitter-swift v0.7.2/go.mod h1:fJmYXTNGA9xhIPXpwB6v1bVbUXutuCh3t7cmnMc3OU8=
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
