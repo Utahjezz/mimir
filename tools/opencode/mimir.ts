@@ -475,6 +475,67 @@ export const callers = tool({
 })
 
 // ---------------------------------------------------------------------------
+// mimir – impact simulate
+// ---------------------------------------------------------------------------
+export const impact_simulate = tool({
+  description:
+    "Simulate the counterfactual impact of changing a symbol. " +
+    "Returns blast-radius scope, risk score/tier, confidence, reason codes, " +
+    "and planning signals that both humans and agents can use before refactoring. " +
+    "Use this before non-trivial API/signature changes.",
+  args: {
+    root: tool.schema
+      .string()
+      .describe("Absolute or relative path to the repository root"),
+    symbol: tool.schema
+      .string()
+      .describe("Target symbol to simulate change against"),
+    change: tool.schema
+      .string()
+      .describe("Hypothetical change descriptor: kind[:key=value[:key=value...]]"),
+    max_depth: tool.schema
+      .number()
+      .int()
+      .optional()
+      .describe("Maximum graph depth to analyze (0 = unlimited, default 6)"),
+    cross_repo: tool.schema
+      .boolean()
+      .optional()
+      .describe("Include cross-repo workspace links in analysis (default true)"),
+    workspace: tool.schema
+      .string()
+      .optional()
+      .describe("Workspace name for cross-repo context (default: active workspace)"),
+    json: tool.schema
+      .boolean()
+      .optional()
+      .describe("Return structured JSON envelope (impact-sim/v1)"),
+    no_refresh: tool.schema
+      .boolean()
+      .optional()
+      .describe("Skip automatic re-index check before simulation"),
+    refresh_threshold: tool.schema
+      .string()
+      .optional()
+      .describe("Override minimum index age that triggers auto-refresh (e.g. '10s', '2m', '0s')"),
+  },
+  async execute(args, _context) {
+    const bin = mimirBin()
+    const globalFlags: string[] = []
+    if (args.refresh_threshold) globalFlags.push("--refresh-threshold", args.refresh_threshold)
+    const flags: string[] = []
+    flags.push("--symbol", args.symbol)
+    flags.push("--change", args.change)
+    if (args.max_depth !== undefined) flags.push("--max-depth", String(args.max_depth))
+    if (args.cross_repo !== undefined) flags.push("--cross-repo", String(args.cross_repo))
+    if (args.workspace)  flags.push("--workspace", args.workspace)
+    if (args.json)       flags.push("--json")
+    if (args.no_refresh) flags.push("--no-refresh")
+    return run(Bun.$`${bin} ${globalFlags} impact simulate ${args.root} ${flags}`)
+  },
+})
+
+// ---------------------------------------------------------------------------
 // mimir – workspace create
 // ---------------------------------------------------------------------------
 export const workspace_create = tool({
