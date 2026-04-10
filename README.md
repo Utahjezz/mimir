@@ -94,6 +94,7 @@ mimir dead ./myrepo --unexported
 | `tree` | `mimir tree <root> [--files]` | Directory tree with file/symbol counts |
 | `callers` | `mimir callers <root> <symbol>` | All call sites that invoke a symbol |
 | `dead` | `mimir dead <root> [flags]` | Symbols with no recorded callers |
+| `impact simulate` | `mimir impact simulate <root> --symbol <name> --change <descriptor> [flags]` | Counterfactual blast-radius, risk score, and planning signals before refactors |
 
 ### `mimir search` flags
 
@@ -132,6 +133,31 @@ mimir dead ./myrepo --unexported
 --file    <str>   Filter by caller file path
 --json           Output as JSON
 --no-refresh     Skip automatic re-index before querying
+```
+
+### `mimir impact simulate` flags
+
+```
+--symbol <str>      Target symbol to simulate change against (required)
+--change <str>      Change descriptor: kind[:key=value[:key=value...]] (required)
+--max-depth <N>     Maximum propagation depth (0 = unlimited, default 6)
+--cross-repo        Include workspace cross-repo links in impact propagation (default true)
+--workspace <name>  Workspace context used for cross-repo links
+--json              Output full simulation result as JSON (impact-sim/v1)
+--no-refresh        Skip automatic re-index before simulation
+```
+
+Examples:
+
+```bash
+# Human-readable summary
+mimir impact simulate ./myrepo --symbol processJob --change "rename_symbol:to=processTask"
+
+# Agent/tool-ready JSON output
+mimir impact simulate ./myrepo \
+  --symbol processJob \
+  --change "add_required_param:param_name=currency:param_type_to=string" \
+  --json
 ```
 
 ### `mimir imports` flags

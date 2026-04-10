@@ -90,6 +90,17 @@ func Register(root *cobra.Command) {
 	deadCmd.Flags().BoolVar(&deadNoRefresh, "no-refresh", false, "Skip automatic re-index before querying")
 	root.AddCommand(deadCmd)
 
+	// impact + impact simulate
+	impactSimulateCmd.Flags().StringVar(&impactSimulateSymbol, "symbol", "", "Target symbol to simulate change against (required)")
+	impactSimulateCmd.Flags().StringVar(&impactSimulateChangeRaw, "change", "", "Hypothetical change descriptor: kind[:key=value[:key=value...]]")
+	impactSimulateCmd.Flags().IntVar(&impactSimulateMaxDepth, "max-depth", 6, "Maximum graph depth to analyze (0 = unlimited)")
+	impactSimulateCmd.Flags().BoolVar(&impactSimulateCrossRepo, "cross-repo", true, "Include cross-repo workspace links in analysis")
+	impactSimulateCmd.Flags().BoolVar(&impactSimulateJSON, "json", false, "Output full impact simulation result as JSON (impact-sim/v1)")
+	impactSimulateCmd.Flags().BoolVar(&impactSimulateNoRefresh, "no-refresh", false, "Skip automatic re-index before simulation")
+	impactSimulateCmd.Flags().StringVar(&impactSimulateWorkspace, "workspace", "", "Workspace name for cross-repo context (default: active workspace)")
+	impactCmd.AddCommand(impactSimulateCmd)
+	root.AddCommand(impactCmd)
+
 	// workspace
 	root.AddCommand(workspaceCmd.WorkspaceCmd)
 

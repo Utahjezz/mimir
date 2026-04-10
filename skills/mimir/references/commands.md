@@ -11,6 +11,7 @@
 - [mimir refs](#mimir-refs)
 - [mimir tree](#mimir-tree)
 - [mimir callers](#mimir-callers)
+- [mimir impact simulate](#mimir-impact-simulate)
 - [mimir dead](#mimir-dead)
 
 ---
@@ -207,6 +208,55 @@ pkg/indexer/walk_test.go                 <file scope>         line 41
 ```
 
 Cycles detected automatically and shown with `[cycle]`.
+
+---
+
+## `mimir impact simulate`
+
+Simulate the counterfactual impact of changing a symbol and receive:
+- blast-radius scope (`direct_callers`, `affected_files`, `affected_repos`)
+- risk scoring (`risk_score`, `risk_tier`, `confidence`)
+- explainability (`reason_codes`, `evidence`)
+- planning signals (`recommended_strategy`, checks, execution order)
+
+```bash
+mimir impact simulate <root> --symbol <name> --change <descriptor>
+```
+
+| Flag | Description |
+|------|-------------|
+| `--symbol <str>` | Target symbol to simulate change against (required) |
+| `--change <str>` | Hypothetical change descriptor `kind[:key=value[:...]]` (required) |
+| `--max-depth N` | Maximum propagation depth (`0` = unlimited, default `6`) |
+| `--cross-repo` | Include workspace cross-repo links in propagation (default `true`) |
+| `--workspace <name>` | Workspace context for cross-repo link loading |
+| `--json` | Emit structured `impact-sim/v1` output |
+| `--no-refresh` | Skip automatic re-index before simulation |
+
+### Change descriptor examples
+
+```bash
+# rename
+--change "rename_symbol:to=NewName"
+
+# add required param
+--change "add_required_param:param_name=currency:param_type_to=string"
+
+# param type change
+--change "param_type_change:param_name=limit:param_type_from=int:param_type_to=int64"
+
+# return type change
+--change "return_type_change:return_type_to=Result"
+```
+
+### JSON output contract
+
+JSON mode returns schema version `impact-sim/v1` with stable snake_case keys, including:
+- `scores`, `scope`, `impacts`
+- `recommended_order`, `required_checks`, `notify_owners`, `alternatives`
+- `planning_signals`, `diagnostics`
+
+Use this mode for agent/tool planning loops before editing code.
 
 ---
 
