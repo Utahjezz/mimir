@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	sqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
@@ -13,15 +12,17 @@ var lastIndexedAtRetryMaxAttempts = 5
 
 var lastIndexedAtRetryInitialBackoff = 10 * time.Millisecond
 
+var writeLastIndexedAt = func(db *sql.DB, indexedAt time.Time) error {
+	_, err := db.Exec(
+		`INSERT INTO meta (key, value) VALUES ('last_indexed_at', ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		indexedAt.UTC().Format(time.RFC3339),
+	)
+	return err
+}
+
 func updateLastIndexedAt(db *sql.DB, indexedAt time.Time) error {
-	return retrySQLiteBusy(func() error {
-		_, err := db.Exec(
-			`INSERT INTO meta (key, value) VALUES ('last_indexed_at', ?)
-			 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-			indexedAt.UTC().Format(time.RFC3339),
-		)
-		return err
-	})
+	return retrySQLiteBusy(func() error { return writeLastIndexedAt(db, indexedAt) })
 }
 
 func retrySQLiteBusy(run func() error) error {
@@ -43,7 +44,7 @@ func retrySQLiteBusy(run func() error) error {
 }
 
 func isRetryableSQLiteBusy(err error) bool {
-	var sqliteErr *sqlite.Error
+	var sqliteErr interface{ Code() int }
 	if !errors.As(err, &sqliteErr) {
 		return false
 	}
