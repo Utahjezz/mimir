@@ -1,7 +1,7 @@
 ---
 name: mimir
 description: "Tree-sitter code indexer for exploring symbols, tracing call graphs, and detecting dead code. Use this skill whenever you need to understand a codebase structure, find where a function is defined, trace who calls what, search for symbols by name or pattern, detect unused code, or get a high-level overview of a repository. Trigger on: 'index this repo', 'find symbol X', 'who calls this function', 'show dead code', 'trace the call graph', 'explore this codebase', 'what symbols are in this file', 'show repo structure', or any codebase exploration task. Also use when navigating unfamiliar repos or before refactoring to understand impact."
-version: 1.2.0
+version: 1.3.0
 type: skill
 category: development
 tags:
@@ -57,6 +57,7 @@ mimir tree <path> --depth 3           # Directory structure with symbol counts
 | **Prefix search** | `mimir search <root> --like "process"` | SQL LIKE prefix match |
 | **Who calls this function?** | `mimir callers <root> <symbol>` | Default 2 levels deep. Use `--depth N` |
 | **What does this function call?** | `mimir refs <root> --caller <name>` | Outbound references |
+| **Simulate refactor impact** | `mimir impact simulate <root> --symbol <name> --change <descriptor>` | Returns risk + planning signals before editing |
 | **Most-called symbols (hotspots)** | `mimir refs <root> --hotspot` | Great for finding load-bearing code |
 | **Dead code detection** | `mimir dead <root> --unexported` | `--unexported` reduces false positives |
 | **Quick file inspection** | `mimir symbols <file>` | No index needed — parses on the fly |
@@ -88,10 +89,24 @@ mimir refs /path/to/repo --hotspot --limit 10    # find the important symbols
 
 ### Before refactoring a function
 ```bash
+mimir impact simulate /path/to/repo --symbol MyFunction --change "rename_symbol:to=MyFunctionV2" --json
 mimir callers /path/to/repo MyFunction            # who depends on this?
 mimir callers /path/to/repo MyFunction --depth 3  # deeper impact analysis
 mimir refs /path/to/repo --caller MyFunction      # what does it call?
 ```
+
+### Agent-aware planning before code edits
+```bash
+mimir impact simulate /path/to/repo \
+  --symbol CheckoutService.process \
+  --change "add_required_param:param_name=currency:param_type_to=string" \
+  --json
+```
+
+Use the JSON output to adapt planning automatically:
+- high risk score → split migration / adapter strategy
+- cross-repo boundaries → coordinate consumers + contract tests
+- low confidence → require manual review step before implementation
 
 ### Finding and understanding a symbol
 ```bash
