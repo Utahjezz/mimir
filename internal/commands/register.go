@@ -36,7 +36,7 @@ func Register(root *cobra.Command) {
 	// search
 	searchCmd.Flags().StringVar(&searchName, "name", "", "Exact symbol name match")
 	searchCmd.Flags().StringVar(&searchLike, "like", "", "Symbol name prefix (LIKE)")
-	searchCmd.Flags().StringVar(&searchFuzzy, "fuzzy", "", "FTS5 fuzzy name match (supports prefix 'Foo*', multi-token 'foo bar')")
+	searchCmd.Flags().StringVar(&searchFuzzy, "fuzzy", "", "FTS5 full-text search over symbol names + body snippets (plain queries auto-split/normalize; FTS operators pass through)")
 	searchCmd.Flags().StringVar(&searchType, "type", "", "Symbol type (function, method, class, ...)")
 	searchCmd.Flags().StringVar(&searchFile, "file", "", "Filter by file path")
 	searchCmd.Flags().IntVar(&searchLimit, "limit", 0, "Maximum number of results to return (0 = unlimited)")

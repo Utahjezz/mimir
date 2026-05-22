@@ -557,6 +557,410 @@ func TestSearchSymbols_FuzzyBM25Ranking(t *testing.T) {
 	}
 }
 
+func TestSearchSymbols_FuzzyTwoTokens_RequiresBoth(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "strict.go", FileEntry{
+		Language:  "go",
+		SHA256:    "strict",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "getUser", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "getProfile", Type: Function, StartLine: 5, EndLine: 7},
+			{Name: "userProfile", Type: Function, StartLine: 9, EndLine: 11},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "get user"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 result for strict 2-token fuzzy query, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "getUser" {
+		t.Errorf("Name: got %q, want %q", got[0].Name, "getUser")
+	}
+}
+
+func TestSearchSymbols_FuzzyThreeTokens_AllowsTwoMatches(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "partial.go", FileEntry{
+		Language:  "go",
+		SHA256:    "partial",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "getUserAddress", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "getUserProfile", Type: Function, StartLine: 5, EndLine: 7},
+			{Name: "deleteInvoice", Type: Function, StartLine: 9, EndLine: 11},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "get user primary"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 partial results for 3-token fuzzy query, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "getUserAddress" {
+		t.Errorf("first result Name: got %q, want %q", got[0].Name, "getUserAddress")
+	}
+	if got[1].Name != "getUserProfile" {
+		t.Errorf("second result Name: got %q, want %q", got[1].Name, "getUserProfile")
+	}
+}
+
+func TestSearchSymbols_FuzzyLongQuery_UsesMinimumMatchThreshold(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "threshold.go", FileEntry{
+		Language:  "go",
+		SHA256:    "threshold",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "loadUserAddressFromCache", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "loadUserAddress", Type: Function, StartLine: 5, EndLine: 7},
+			{Name: "loadCache", Type: Function, StartLine: 9, EndLine: 11},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "load user primary address cache"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 results meeting long-query threshold, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "loadUserAddressFromCache" {
+		t.Errorf("first result Name: got %q, want %q", got[0].Name, "loadUserAddressFromCache")
+	}
+	if got[1].Name != "loadUserAddress" {
+		t.Errorf("second result Name: got %q, want %q", got[1].Name, "loadUserAddress")
+	}
+}
+
+func TestSearchSymbols_FuzzyRanksMoreMatchedTokensHigher(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "ranking.go", FileEntry{
+		Language:  "go",
+		SHA256:    "ranking",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "loadUserAddressFromCache", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "loadUserAddress", Type: Function, StartLine: 5, EndLine: 7},
+			{Name: "loadCache", Type: Function, StartLine: 9, EndLine: 11},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "load user address cache"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) < 3 {
+		t.Fatalf("expected at least 3 ranked partial results, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "loadUserAddressFromCache" {
+		t.Errorf("rank 0 Name: got %q, want %q", got[0].Name, "loadUserAddressFromCache")
+	}
+	if got[1].Name != "loadUserAddress" {
+		t.Errorf("rank 1 Name: got %q, want %q", got[1].Name, "loadUserAddress")
+	}
+	if got[2].Name != "loadCache" {
+		t.Errorf("rank 2 Name: got %q, want %q", got[2].Name, "loadCache")
+	}
+}
+
+func TestSearchSymbols_FuzzyRawFTSPassthrough_Unchanged(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "raw.go", FileEntry{
+		Language:  "go",
+		SHA256:    "raw",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "processUser", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "syncInvoice", Type: Function, StartLine: 5, EndLine: 7},
+			{Name: "cleanupCache", Type: Function, StartLine: 9, EndLine: 11},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "process* OR sync*"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 results from raw FTS passthrough query, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "processUser" {
+		t.Errorf("first result Name: got %q, want %q", got[0].Name, "processUser")
+	}
+	if got[1].Name != "syncInvoice" {
+		t.Errorf("second result Name: got %q, want %q", got[1].Name, "syncInvoice")
+	}
+}
+
+func TestSearchSymbols_FuzzyRanksCompactNameHigher(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "compact.go", FileEntry{
+		Language:  "go",
+		SHA256:    "compact",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "loadUserAddress", Type: Function, StartLine: 1, EndLine: 3},
+			{
+				Name:        "loadUserAddressFromCache",
+				Type:        Function,
+				StartLine:   5,
+				EndLine:     7,
+				BodySnippet: "load user address load user address cache",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "load user address"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) < 2 {
+		t.Fatalf("expected at least 2 results, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "loadUserAddress" {
+		t.Errorf("rank 0 Name: got %q, want %q", got[0].Name, "loadUserAddress")
+	}
+	if got[1].Name != "loadUserAddressFromCache" {
+		t.Errorf("rank 1 Name: got %q, want %q", got[1].Name, "loadUserAddressFromCache")
+	}
+}
+
+func TestSearchSymbols_FuzzyRanksNameMatchAboveBodyOnly(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "name-vs-body.go", FileEntry{
+		Language:  "go",
+		SHA256:    "name-vs-body",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "syncInvoice", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "processJob", Type: Function, StartLine: 5, EndLine: 7, BodySnippet: "sync invoice"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "sync invoice"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) < 2 {
+		t.Fatalf("expected at least 2 results, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "syncInvoice" {
+		t.Errorf("rank 0 Name: got %q, want %q", got[0].Name, "syncInvoice")
+	}
+	if got[1].Name != "processJob" {
+		t.Errorf("rank 1 Name: got %q, want %q", got[1].Name, "processJob")
+	}
+}
+
+func TestSearchSymbols_FuzzyRanksHigherCoverageAboveLowerCoverage(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "coverage.go", FileEntry{
+		Language:  "go",
+		SHA256:    "coverage",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "loadUserAddressFromCache", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "loadUserAddress", Type: Function, StartLine: 5, EndLine: 7},
+			{Name: "loadCache", Type: Function, StartLine: 9, EndLine: 11},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "load user address cache"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) < 3 {
+		t.Fatalf("expected at least 3 results, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "loadUserAddressFromCache" {
+		t.Errorf("rank 0 Name: got %q, want %q", got[0].Name, "loadUserAddressFromCache")
+	}
+	if got[1].Name != "loadUserAddress" {
+		t.Errorf("rank 1 Name: got %q, want %q", got[1].Name, "loadUserAddress")
+	}
+	if got[2].Name != "loadCache" {
+		t.Errorf("rank 2 Name: got %q, want %q", got[2].Name, "loadCache")
+	}
+}
+
+func TestSearchSymbols_FuzzyRanksBodyOnlyLowerThanNameMatch(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "body-lower.go", FileEntry{
+		Language:  "go",
+		SHA256:    "body-lower",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "parseResponseJSON", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "handleRequest", Type: Function, StartLine: 5, EndLine: 7, BodySnippet: "parse json response"},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "json response parse"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) < 2 {
+		t.Fatalf("expected at least 2 results, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "parseResponseJSON" {
+		t.Errorf("rank 0 Name: got %q, want %q", got[0].Name, "parseResponseJSON")
+	}
+	if got[1].Name != "handleRequest" {
+		t.Errorf("rank 1 Name: got %q, want %q", got[1].Name, "handleRequest")
+	}
+}
+
+func TestSearchSymbols_FuzzyNormalizesCustomAbbreviation(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "abbr.go", FileEntry{
+		Language:  "go",
+		SHA256:    "abbr",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "loadConfig", Type: Function, StartLine: 1, EndLine: 3},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "load cfg"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "loadConfig" {
+		t.Errorf("Name: got %q, want %q", got[0].Name, "loadConfig")
+	}
+}
+
+func TestSearchSymbols_FuzzyNormalizesTechTerm(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "k8s.go", FileEntry{
+		Language:  "go",
+		SHA256:    "k8s",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "kubernetesClient", Type: Function, StartLine: 1, EndLine: 3},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "k8s client"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "kubernetesClient" {
+		t.Errorf("Name: got %q, want %q", got[0].Name, "kubernetesClient")
+	}
+}
+
+func TestSearchSymbols_FuzzyRawFTSDoesNotNormalize(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "raw-normalize.go", FileEntry{
+		Language:  "go",
+		SHA256:    "raw-normalize",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "loadCfg", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "loadConfig", Type: Function, StartLine: 5, EndLine: 7},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "cfg*"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 raw-FTS result, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "loadCfg" {
+		t.Errorf("Name: got %q, want %q", got[0].Name, "loadCfg")
+	}
+}
+
+func TestSearchSymbols_NameLikeDoesNotNormalize(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "like.go", FileEntry{
+		Language:  "go",
+		SHA256:    "like",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "cfgLoader", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "configLoader", Type: Function, StartLine: 5, EndLine: 7},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{NameLike: "cfg"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 LIKE result, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "cfgLoader" {
+		t.Errorf("Name: got %q, want %q", got[0].Name, "cfgLoader")
+	}
+}
+
 // TestSearchSymbols_Limit verifies that the Limit field caps results for both
 // the SQL path (Name/NameLike) and the FTS path (FuzzyName).
 func TestSearchSymbols_Limit(t *testing.T) {

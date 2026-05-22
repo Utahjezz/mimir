@@ -19,7 +19,7 @@ mimir dead ./myrepo --unexported
 - **Auto-refresh** — query commands transparently re-index stale files; no manual `mimir index` needed between edits
 - **`--json` on every command** — pipe to `jq` or consume programmatically
 - **Single binary** — requires Go 1.26+ and a C compiler (CGO, via tree-sitter)
-- **FTS5 full-text search** — fuzzy symbol search with BM25 relevance ranking; automatic camelCase/snake_case splitting (`processOrder` matches both `process` and `order`); string literals normalised so `application/json` is searchable as `application json`
+- **FTS5 full-text search** — plain `--fuzzy` queries are tokenized, softly matched across symbol names + body snippets, and normalized for common technical aliases/abbreviations; raw FTS operator queries pass through unchanged
 - **Dot-notation** — `Class.method`, `*.method`, `Class.*` in `--name` / `--like`
 
 ---
@@ -101,12 +101,16 @@ mimir dead ./myrepo --unexported
 ```
 --name   <str>   Exact symbol name (supports dot-notation: Class.method)
 --like   <str>   Prefix match (LIKE)
---fuzzy  <str>   FTS5 full-text match; results ordered by BM25 relevance (best first).
-                 camelCase/snake_case queries are split automatically: "processOrder"
-                 matches symbols containing both "process" and "order". String literals
-                 in the body snippet are normalised (slashes/hyphens/colons treated as
-                 word boundaries), so "application/json" is searchable as "application json".
-                 Use FTS5 operators (* " : ^) to bypass splitting and pass query unchanged.
+--fuzzy  <str>   FTS5 full-text match across symbol name tokens and indexed body snippets.
+                 Plain queries are auto-split on camelCase/PascalCase/snake_case and
+                 expanded with lightweight technical normalization (for example common
+                 aliases/abbreviations such as `cfg` → `config`). Multi-token fuzzy
+                 queries use soft matching, so longer plain queries do not require every
+                 split token to match exactly. String literals in body snippets are
+                 normalised (slashes/hyphens/colons treated as word boundaries), so
+                 "application/json" is searchable as "application json". Queries that
+                 use FTS5 operators (* " : ^) bypass normalization/splitting and are
+                 passed through unchanged.
 --limit  <N>     Maximum number of results to return (default 0 = unlimited)
 --type   <str>   Filter by type: function | method | class | interface |
                                type_alias | enum | namespace | variable

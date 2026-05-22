@@ -153,12 +153,13 @@ export const search = tool({
       .string()
       .optional()
       .describe(
-        "FTS5 full-text search with automatic camelCase/snake_case token splitting. " +
-        "Plain words (e.g. 'process job') are split into identifier tokens and matched " +
-        "against both the symbol name tokens and the body snippet (semantic tokens from the full AST subtree). " +
+        "FTS5 full-text search with automatic plain-word and camelCase/PascalCase/snake_case token splitting. " +
+        "Plain queries are lightly normalized for common technical aliases/abbreviations and matched " +
+        "against both symbol name tokens and the body snippet (semantic tokens from the full AST subtree). " +
+        "Multi-token plain queries use softer matching instead of requiring every split token to match exactly. " +
         "String literals in the body snippet are normalised: slash/hyphen/colon separators are treated as " +
         "word boundaries, so 'application/json' is searchable as 'application json'. " +
-        "Results are ordered by BM25 relevance (most relevant first). " +
+        "Results still use BM25 as a ranking signal, alongside token coverage and name-token preference. " +
         "Use FTS5 operators (*  \"  :  ^) to bypass splitting and pass the query through unchanged."
       ),
     type: tool.schema

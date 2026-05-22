@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "ignore_runes": [" ", "-", ".", "/", "_"],
+  "tech_terms": {
+    "k8s, kubernetes": "kubernetes",
+    "js, javascript": "javascript",
+    "ts, typescript": "typescript",
+    "authn, authentication": "authentication",
+    "authz, authorization": "authorization"
+  },
+  "code_abbreviations": {
+    "cfg, config": "config",
+    "ctx, context": "context",
+    "svc, service": "service",
+    "req, request": "request",
+    "res, resp, response": "response",
+    "repo, repository": "repository",
+    "env, environment": "environment",
+    "impl, implementation": "implementation"
+  }
+}

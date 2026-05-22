@@ -3,6 +3,7 @@ package indexer
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -155,31 +156,104 @@ func searchSymbolsSQL(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 // When the query already contains FTS5 operators the raw query is forwarded
 // unchanged to preserve power-user syntax.
 func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
-	var conds []string
-	var args []any
-
-	var ftsQuery string
-	if strings.ContainsAny(q.FuzzyName, "*\":^") {
-		// Power-user syntax — pass through unchanged, match on name column.
-		ftsQuery = q.FuzzyName
-	} else {
-		// Expand each query word to match against name_tokens OR body_snippet.
-		// "user address" →
-		//   "(name_tokens : user* OR body_snippet : user*) AND
-		//    (name_tokens : address*  OR body_snippet : address*)"
-		words := tokenizeQuery(q.FuzzyName)
-		if len(words) == 0 {
-			return []SymbolRow{}, nil
-		}
-		parts := make([]string, len(words))
-		for i, w := range words {
-			parts[i] = "(name_tokens : " + w + "* OR body_snippet : " + w + "*)"
-		}
-		ftsQuery = strings.Join(parts, " AND ")
+	if hasFTSOperators(q.FuzzyName) {
+		return searchSymbolsRawFTS(db, q)
 	}
 
-	// FTS MATCH is the primary filter.
-	args = append(args, ftsQuery)
+	normalized := defaultQueryNormalizer.NormalizeQuery(q.FuzzyName)
+	words := normalized.SearchWords()
+	if len(words) == 0 {
+		return []SymbolRow{}, nil
+	}
+
+	return searchSymbolsSoftFTS(db, q, normalized)
+}
+
+func hasFTSOperators(query string) bool {
+	return strings.ContainsAny(query, "*\":^")
+}
+
+func searchSymbolsRawFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
+	query, args := buildFTSBaseQuery(q, q.FuzzyName)
+	query += " ORDER BY f.rank"
+	if q.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", q.Limit)
+	}
+	return scanSymbolRows(db.Query(query, args...))
+}
+
+
+func searchSymbolsSoftFTS(db *sql.DB, q SearchQuery, normalized NormalizedQuery) ([]SymbolRow, error) {
+	words := normalized.SearchWords()
+	query, args := buildFTSBaseQuery(q, buildSoftFuzzyQuery(words))
+	query = strings.Replace(query,
+		"SELECT s.file_path, s.name, s.type, s.start_line, s.end_line, s.parent",
+		"SELECT s.file_path, s.name, s.type, s.start_line, s.end_line, s.parent, s.name_tokens, s.body_snippet, f.rank",
+		1,
+	)
+	query += " ORDER BY f.rank"
+
+	candidates, err := scanFuzzyCandidates(db.Query(query, args...))
+	if err != nil {
+		return nil, err
+	}
+
+	threshold := minRequiredFuzzyMatches(len(normalized.Tokens))
+	filtered := make([]fuzzyCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		metrics := fuzzyMatchMetrics(candidate.nameTokens, candidate.bodySnippet, normalized)
+		total := metrics.totalMatches
+		if total < threshold {
+			continue
+		}
+		candidate.totalMatches = metrics.totalMatches
+		candidate.nameMatches = metrics.nameMatches
+		candidate.bodyOnlyMatches = metrics.bodyOnlyMatches
+		candidate.extraNameTokens = metrics.extraNameTokens
+		filtered = append(filtered, candidate)
+	}
+
+	sort.SliceStable(filtered, func(i, j int) bool {
+		left := filtered[i]
+		right := filtered[j]
+
+		if left.totalMatches != right.totalMatches {
+			return left.totalMatches > right.totalMatches
+		}
+		if left.nameMatches != right.nameMatches {
+			return left.nameMatches > right.nameMatches
+		}
+		if left.bodyOnlyMatches != right.bodyOnlyMatches {
+			return left.bodyOnlyMatches < right.bodyOnlyMatches
+		}
+		if left.extraNameTokens != right.extraNameTokens {
+			return left.extraNameTokens < right.extraNameTokens
+		}
+		if left.rank != right.rank {
+			return left.rank < right.rank
+		}
+		if left.FilePath != right.FilePath {
+			return left.FilePath < right.FilePath
+		}
+		if left.StartLine != right.StartLine {
+			return left.StartLine < right.StartLine
+		}
+		return left.Name < right.Name
+	})
+
+	results := make([]SymbolRow, 0, len(filtered))
+	for _, candidate := range filtered {
+		results = append(results, candidate.SymbolRow)
+	}
+	if q.Limit > 0 && len(results) > q.Limit {
+		results = results[:q.Limit]
+	}
+	return results, nil
+}
+
+func buildFTSBaseQuery(q SearchQuery, ftsQuery string) (string, []any) {
+	var conds []string
+	args := []any{ftsQuery}
 
 	if q.Parent != "" {
 		if q.Parent == "*" {
@@ -204,18 +278,168 @@ func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 	          FROM symbols s
 	          JOIN symbols_fts f ON f.rowid = s.id
 	          WHERE symbols_fts MATCH ?`
-
 	if len(conds) > 0 {
 		query += " AND " + strings.Join(conds, " AND ")
 	}
-	// Order by FTS5 BM25 rank (ascending — rank is negative, so more relevant
-	// rows have a more-negative value and sort first).
-	query += " ORDER BY f.rank"
-	if q.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", q.Limit)
+	return query, args
+}
+
+func buildSoftFuzzyQuery(words []string) string {
+	parts := make([]string, len(words))
+	for i, word := range words {
+		parts[i] = "(name_tokens : " + word + "* OR body_snippet : " + word + "*)"
+	}
+	return strings.Join(parts, " OR ")
+}
+
+func minRequiredFuzzyMatches(tokenCount int) int {
+	switch {
+	case tokenCount <= 0:
+		return 0
+	case tokenCount <= 2:
+		return tokenCount
+	case tokenCount <= 4:
+		return 2
+	default:
+		return (6*tokenCount + 9) / 10
+	}
+}
+
+type fuzzyMetrics struct {
+	totalMatches    int
+	nameMatches     int
+	bodyOnlyMatches int
+	extraNameTokens int
+}
+
+func fuzzyMatchMetrics(nameTokens, bodySnippet string, normalized NormalizedQuery) fuzzyMetrics {
+	nameParts := strings.Fields(strings.ToLower(nameTokens))
+	bodyParts := strings.Fields(strings.ToLower(bodySnippet))
+	searchWords := normalized.SearchWords()
+
+	totalMatches := 0
+	nameMatches := 0
+	bodyOnlyMatches := 0
+	for _, token := range normalized.Tokens {
+		matchedName := false
+		matchedBody := false
+		for _, word := range token.Expanded {
+			if !matchedName && hasPrefixTokenMatch(nameParts, word) {
+				matchedName = true
+			}
+			if !matchedBody && hasPrefixTokenMatch(bodyParts, word) {
+				matchedBody = true
+			}
+			if matchedName && matchedBody {
+				break
+			}
+		}
+		if matchedName || matchedBody {
+			totalMatches++
+		}
+		if matchedName {
+			nameMatches++
+		} else if matchedBody {
+			bodyOnlyMatches++
+		}
 	}
 
-	return scanSymbolRows(db.Query(query, args...))
+	return fuzzyMetrics{
+		totalMatches:    totalMatches,
+		nameMatches:     nameMatches,
+		bodyOnlyMatches: bodyOnlyMatches,
+		extraNameTokens: extraNameTokenCount(nameParts, searchWords),
+	}
+}
+
+func extraNameTokenCount(nameParts, words []string) int {
+	matched := 0
+	for _, part := range nameParts {
+		if hasPrefixTokenMatch(words, part) || hasQueryWordPrefix(part, words) {
+			matched++
+		}
+	}
+	extra := len(nameParts) - matched
+	if extra < 0 {
+		return 0
+	}
+	return extra
+}
+
+func hasQueryWordPrefix(part string, words []string) bool {
+	for _, word := range words {
+		if strings.HasPrefix(part, word) || strings.HasPrefix(word, part) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPrefixTokenMatch(parts []string, word string) bool {
+	for _, part := range parts {
+		if strings.HasPrefix(part, word) {
+			return true
+		}
+	}
+	return false
+}
+
+type fuzzyCandidate struct {
+	SymbolRow
+	nameTokens   string
+	bodySnippet  string
+	rank         float64
+	totalMatches int
+	nameMatches  int
+	bodyOnlyMatches int
+	extraNameTokens int
+}
+
+func scanFuzzyCandidates(rows *sql.Rows, err error) ([]fuzzyCandidate, error) {
+	if err != nil {
+		return nil, fmt.Errorf("SearchSymbols query: %w", err)
+	}
+	defer rows.Close()
+
+	type dedupKey struct {
+		file      string
+		name      string
+		typ       string
+		startLine int
+	}
+
+	seen := make(map[dedupKey]struct{})
+	results := make([]fuzzyCandidate, 0)
+	for rows.Next() {
+		var candidate fuzzyCandidate
+		var typ string
+		if err := rows.Scan(
+			&candidate.FilePath,
+			&candidate.Name,
+			&typ,
+			&candidate.StartLine,
+			&candidate.EndLine,
+			&candidate.Parent,
+			&candidate.nameTokens,
+			&candidate.bodySnippet,
+			&candidate.rank,
+		); err != nil {
+			return nil, fmt.Errorf("SearchSymbols scan: %w", err)
+		}
+		candidate.Type = SymbolType(typ)
+
+		key := dedupKey{candidate.FilePath, candidate.Name, typ, candidate.StartLine}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		results = append(results, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("SearchSymbols rows: %w", err)
+	}
+
+	return results, nil
 }
 
 // scanSymbolRows reads a *sql.Rows result into a []SymbolRow slice.
