@@ -851,6 +851,116 @@ func TestSearchSymbols_FuzzyRanksBodyOnlyLowerThanNameMatch(t *testing.T) {
 	}
 }
 
+func TestSearchSymbols_FuzzyNormalizesCustomAbbreviation(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "abbr.go", FileEntry{
+		Language:  "go",
+		SHA256:    "abbr",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "loadConfig", Type: Function, StartLine: 1, EndLine: 3},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "load cfg"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "loadConfig" {
+		t.Errorf("Name: got %q, want %q", got[0].Name, "loadConfig")
+	}
+}
+
+func TestSearchSymbols_FuzzyNormalizesTechTerm(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "k8s.go", FileEntry{
+		Language:  "go",
+		SHA256:    "k8s",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "kubernetesClient", Type: Function, StartLine: 1, EndLine: 3},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "k8s client"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "kubernetesClient" {
+		t.Errorf("Name: got %q, want %q", got[0].Name, "kubernetesClient")
+	}
+}
+
+func TestSearchSymbols_FuzzyRawFTSDoesNotNormalize(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "raw-normalize.go", FileEntry{
+		Language:  "go",
+		SHA256:    "raw-normalize",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "loadCfg", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "loadConfig", Type: Function, StartLine: 5, EndLine: 7},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{FuzzyName: "cfg*"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 raw-FTS result, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "loadCfg" {
+		t.Errorf("Name: got %q, want %q", got[0].Name, "loadCfg")
+	}
+}
+
+func TestSearchSymbols_NameLikeDoesNotNormalize(t *testing.T) {
+	db := openTestDB(t, t.TempDir())
+
+	if err := WriteFile(db, "like.go", FileEntry{
+		Language:  "go",
+		SHA256:    "like",
+		IndexedAt: time.Now().UTC(),
+		Symbols: []SymbolInfo{
+			{Name: "cfgLoader", Type: Function, StartLine: 1, EndLine: 3},
+			{Name: "configLoader", Type: Function, StartLine: 5, EndLine: 7},
+		},
+	}); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := SearchSymbols(db, SearchQuery{NameLike: "cfg"})
+	if err != nil {
+		t.Fatalf("SearchSymbols: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 LIKE result, got %d: %v", len(got), got)
+	}
+	if got[0].Name != "cfgLoader" {
+		t.Errorf("Name: got %q, want %q", got[0].Name, "cfgLoader")
+	}
+}
+
 // TestSearchSymbols_Limit verifies that the Limit field caps results for both
 // the SQL path (Name/NameLike) and the FTS path (FuzzyName).
 func TestSearchSymbols_Limit(t *testing.T) {

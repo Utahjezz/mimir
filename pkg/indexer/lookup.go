@@ -160,12 +160,13 @@ func searchSymbolsFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 		return searchSymbolsRawFTS(db, q)
 	}
 
-	words := tokenizeQuery(q.FuzzyName)
+	normalized := defaultQueryNormalizer.NormalizeQuery(q.FuzzyName)
+	words := normalized.SearchWords()
 	if len(words) == 0 {
 		return []SymbolRow{}, nil
 	}
 
-	return searchSymbolsSoftFTS(db, q, words)
+	return searchSymbolsSoftFTS(db, q, normalized)
 }
 
 func hasFTSOperators(query string) bool {
@@ -181,7 +182,9 @@ func searchSymbolsRawFTS(db *sql.DB, q SearchQuery) ([]SymbolRow, error) {
 	return scanSymbolRows(db.Query(query, args...))
 }
 
-func searchSymbolsSoftFTS(db *sql.DB, q SearchQuery, words []string) ([]SymbolRow, error) {
+
+func searchSymbolsSoftFTS(db *sql.DB, q SearchQuery, normalized NormalizedQuery) ([]SymbolRow, error) {
+	words := normalized.SearchWords()
 	query, args := buildFTSBaseQuery(q, buildSoftFuzzyQuery(words))
 	query = strings.Replace(query,
 		"SELECT s.file_path, s.name, s.type, s.start_line, s.end_line, s.parent",
@@ -195,10 +198,10 @@ func searchSymbolsSoftFTS(db *sql.DB, q SearchQuery, words []string) ([]SymbolRo
 		return nil, err
 	}
 
-	threshold := minRequiredFuzzyMatches(len(words))
+	threshold := minRequiredFuzzyMatches(len(normalized.Tokens))
 	filtered := make([]fuzzyCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
-		metrics := fuzzyMatchMetrics(candidate.nameTokens, candidate.bodySnippet, words)
+		metrics := fuzzyMatchMetrics(candidate.nameTokens, candidate.bodySnippet, normalized)
 		total := metrics.totalMatches
 		if total < threshold {
 			continue
@@ -309,16 +312,28 @@ type fuzzyMetrics struct {
 	extraNameTokens int
 }
 
-func fuzzyMatchMetrics(nameTokens, bodySnippet string, words []string) fuzzyMetrics {
+func fuzzyMatchMetrics(nameTokens, bodySnippet string, normalized NormalizedQuery) fuzzyMetrics {
 	nameParts := strings.Fields(strings.ToLower(nameTokens))
 	bodyParts := strings.Fields(strings.ToLower(bodySnippet))
+	searchWords := normalized.SearchWords()
 
 	totalMatches := 0
 	nameMatches := 0
 	bodyOnlyMatches := 0
-	for _, word := range words {
-		matchedName := hasPrefixTokenMatch(nameParts, word)
-		matchedBody := hasPrefixTokenMatch(bodyParts, word)
+	for _, token := range normalized.Tokens {
+		matchedName := false
+		matchedBody := false
+		for _, word := range token.Expanded {
+			if !matchedName && hasPrefixTokenMatch(nameParts, word) {
+				matchedName = true
+			}
+			if !matchedBody && hasPrefixTokenMatch(bodyParts, word) {
+				matchedBody = true
+			}
+			if matchedName && matchedBody {
+				break
+			}
+		}
 		if matchedName || matchedBody {
 			totalMatches++
 		}
@@ -333,7 +348,7 @@ func fuzzyMatchMetrics(nameTokens, bodySnippet string, words []string) fuzzyMetr
 		totalMatches:    totalMatches,
 		nameMatches:     nameMatches,
 		bodyOnlyMatches: bodyOnlyMatches,
-		extraNameTokens: extraNameTokenCount(nameParts, words),
+		extraNameTokens: extraNameTokenCount(nameParts, searchWords),
 	}
 }
 

@@ -115,7 +115,7 @@ mimir search [root] [--name <exact>] [--like <prefix>] [--fuzzy <fts5>]
 |------|-------------|
 | `--name <str>` | Exact symbol name match |
 | `--like <str>` | Symbol name prefix (SQL `LIKE` — trailing `%` is added automatically; do not include it) |
-| `--fuzzy <str>` | FTS5 match: camelCase/snake_case splitting, multi-word, body snippet; results ordered by BM25 relevance |
+| `--fuzzy <str>` | FTS5 match across symbol name tokens + body snippets; plain queries are split/normalized and use softer multi-token matching |
 | `--type <str>` | Filter by symbol type |
 | `--file <str>` | Substring match on indexed relative file path (e.g. `facade.go`, `pkg/indexer/`) |
 | `--limit N` | Maximum number of results to return (`0` = unlimited, default) |
@@ -123,7 +123,7 @@ mimir search [root] [--name <exact>] [--like <prefix>] [--fuzzy <fts5>]
 | `--no-refresh` | Skip automatic re-index |
 | `--json` | Output as JSON |
 
-**Fuzzy behavior:** When query has no FTS5 operators, mimir auto-splits camelCase/snake_case tokens and applies prefix matching against name tokens AND body snippet. String literals in body snippets are normalised — slashes, hyphens, and colons are treated as word boundaries, so `application/json` is searchable as `application json`. Results are ordered by BM25 relevance (best match first). With FTS5 operators (`*`, `"`, `:`), query is passed through unchanged.
+**Fuzzy behavior:** When the query has no FTS5 operators, mimir auto-splits plain text plus camelCase/PascalCase/snake_case identifiers, applies lightweight technical normalization/canonicalization for common aliases, and runs soft prefix matching against both symbol name tokens and body snippets. String literals in body snippets are normalised — slashes, hyphens, and colons are treated as word boundaries, so `application/json` is searchable as `application json`. Ranking still uses BM25, but current plain-query ordering also considers token coverage and prefers direct name-token matches over body-only matches. With FTS5 operators (`*`, `"`, `:`, `^`), the query is passed through unchanged.
 
 **Dot-notation:** `Class.method` (specific), `*.method` (any class), `Class.*` (all members).
 
