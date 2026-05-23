@@ -42,7 +42,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	}
 	defer db.Close()
 
-	stats, err := indexer.Run(root, db)
+	stats, err := indexer.RunLocked(root, db)
 	if err != nil {
 		return fmt.Errorf("indexing failed: %w", err)
 	}

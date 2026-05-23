@@ -68,7 +68,7 @@ func indexRepo(db *sql.DB, repo Repository, rebuild bool) RepoResult {
 	}
 	defer repoDB.Close()
 
-	stats, err := indexer.Run(repo.Path, repoDB)
+	stats, err := indexer.RunLocked(repo.Path, repoDB)
 	if err != nil {
 		return RepoResult{Repo: repo, Err: fmt.Errorf("indexing failed: %w", err)}
 	}
