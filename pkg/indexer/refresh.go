@@ -44,9 +44,6 @@ func ShouldRefresh(db *sql.DB, threshold time.Duration) (bool, error) {
 // This is the single entry point all query commands should use instead of
 // calling Run() directly.
 func AutoRefresh(root string, db *sql.DB, threshold time.Duration) (IndexStats, error) {
-	autoRefreshMutex.Lock()
-	defer autoRefreshMutex.Unlock()
-
 	stale, err := ShouldRefresh(db, threshold)
 	if err != nil {
 		return IndexStats{}, fmt.Errorf("auto-refresh: %w", err)
@@ -54,5 +51,31 @@ func AutoRefresh(root string, db *sql.DB, threshold time.Duration) (IndexStats, 
 	if !stale {
 		return IndexStats{}, nil
 	}
+
+	autoRefreshMutex.Lock()
+	defer autoRefreshMutex.Unlock()
+
+	stale, err = ShouldRefresh(db, threshold)
+	if err != nil {
+		return IndexStats{}, fmt.Errorf("auto-refresh: %w", err)
+	}
+	if !stale {
+		return IndexStats{}, nil
+	}
+
+	lock, err := acquireRepoRefreshLock(root)
+	if err != nil {
+		return IndexStats{}, fmt.Errorf("auto-refresh: %w", err)
+	}
+	defer lock.Unlock() //nolint:errcheck
+
+	stale, err = ShouldRefresh(db, threshold)
+	if err != nil {
+		return IndexStats{}, fmt.Errorf("auto-refresh: %w", err)
+	}
+	if !stale {
+		return IndexStats{}, nil
+	}
+
 	return Run(root, db)
 }

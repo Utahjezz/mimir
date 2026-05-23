@@ -3,8 +3,11 @@ package indexer
 // refresh_test.go — tests for GetLastIndexedAt, ShouldRefresh, and AutoRefresh.
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -261,4 +264,57 @@ func TestAutoRefresh_PicksUpMutatedSymbol(t *testing.T) {
 	if !syms["World"] {
 		t.Error(`symbol "World" should appear after AutoRefresh detects mutation`)
 	}
+}
+
+func TestAutoRefresh_ConcurrentProcesses_DoNotFailOnRefreshLock(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	root := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\nfunc Hello() {}\n"), 0o644); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+
+	db := openWalkDB(t, root)
+	if _, err := Run(root, db); err != nil {
+		t.Fatalf("initial Run: %v", err)
+	}
+
+	bin := filepath.Join(t.TempDir(), "mimir-test")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/mimir")
+	build.Dir = repoRootFromWD(t)
+	build.Env = append(os.Environ(), "XDG_CONFIG_HOME="+tmp)
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build mimir: %v\n%s", err, string(out))
+	}
+
+	runs := 12
+	errCh := make(chan error, runs)
+	for i := range runs {
+		go func(i int) {
+			cmd := exec.Command(bin, "search", root, "--name", "Hello", "--refresh-threshold", "0s")
+			cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+tmp)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				errCh <- fmt.Errorf("run %d: %w\n%s", i, err, strings.TrimSpace(string(out)))
+				return
+			}
+			errCh <- nil
+		}(i)
+	}
+
+	for range runs {
+		if err := <-errCh; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func repoRootFromWD(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
+	return filepath.Dir(filepath.Dir(wd))
 }
