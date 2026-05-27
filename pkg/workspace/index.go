@@ -36,15 +36,13 @@ func IndexWorkspace(db *sql.DB, concurrency int, rebuild bool) (<-chan RepoResul
 
 		for _, repo := range repos {
 			repo := repo // capture
-			wg.Add(1)
 			sem <- struct{}{} // acquire slot
 
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				defer func() { <-sem }() // release slot
 
 				results <- indexRepo(db, repo, rebuild)
-			}()
+			})
 		}
 
 		wg.Wait()

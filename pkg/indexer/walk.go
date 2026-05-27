@@ -78,11 +78,9 @@ func Run(root string, db *sql.DB) (IndexStats, error) {
 	// --- worker pool ---
 	var wg sync.WaitGroup
 	for range workerCount {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			worker(muncher, db, now, jobs, results)
-		}()
+		})
 	}
 
 	// Close results once all workers are done.
