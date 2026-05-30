@@ -8,6 +8,7 @@
 - [mimir symbol](#mimir-symbol)
 - [mimir search](#mimir-search)
 - [mimir report](#mimir-report)
+- [mimir imports](#mimir-imports)
 - [mimir refs](#mimir-refs)
 - [mimir tree](#mimir-tree)
 - [mimir callers](#mimir-callers)
@@ -141,6 +142,44 @@ Summary of the index: file count, symbol count, language and type breakdown.
 
 ```bash
 mimir report <root> [--no-refresh] [--json]
+```
+
+---
+
+## `mimir imports`
+
+Query the imports table for a repo, or fan out across all repos in a workspace.
+
+```bash
+mimir imports [root] [--file <path>] [--module <path>]
+              [--workspace <name>] [--no-refresh] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--file <path>` | Filter by the source file that contains the import |
+| `--module <path>` | Filter by imported module/package path |
+| `--workspace <name>` | Fan out imports query across all repos in this workspace (`[root]` is ignored) |
+| `--no-refresh` | Skip automatic re-index before querying |
+| `--json` | Output as JSON |
+
+**Use it for:**
+- what does this file import?
+- who imports this package/module?
+- which repos depend on this internal package?
+
+With no flags, all indexed import statements are returned.
+
+**Single-repo text output:**
+```
+pkg/orders/service.go                     github.com/acme/payments/sdk            line 12
+pkg/orders/service.go                     github.com/acme/shared/contracts        [contracts]  line 13
+```
+
+**Workspace text output:**
+```
+backend-a1b2c3d4             pkg/orders/service.go                     github.com/acme/shared/contracts        line 13
+payments-def45678            pkg/worker/handler.go                     github.com/acme/shared/contracts        line 8
 ```
 
 ---

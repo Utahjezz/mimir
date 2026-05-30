@@ -1,0 +1,78 @@
+{
+  "skill_name": "mimir",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I just cloned this repo. Use Mimir to index the current repository, give me a fast orientation report (overview + shallow tree + hotspot-style summary), then point me to the single most load-bearing symbol I should inspect next and explain why.",
+      "expected_output": "A concise repository orientation that uses Mimir's index/report/tree/refs workflow, highlights a few important areas of the repo, and recommends one concrete symbol or file to inspect next.",
+      "files": [],
+      "expectations": [
+        "The response indexes before querying and includes an overview, a shallow structural view, and a hotspot-style summary.",
+        "The response names at least one concrete symbol and file path worth inspecting next.",
+        "The recommendation is grounded in Mimir findings rather than generic repository advice."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I'm reviewing `internal/commands/imports.go`. Use Mimir to tell me exactly what that file imports and what each dependency is doing in the command. Call out any workspace-specific behavior if it matters.",
+      "expected_output": "A focused import analysis for internal/commands/imports.go that identifies the imported packages and explains how they support repo-scoped imports queries, workspace fan-out, JSON output, and command wiring.",
+      "files": [],
+      "expectations": [
+        "The response uses Mimir's imports capability for a file-specific dependency question.",
+        "The response identifies github.com/Utahjezz/mimir/pkg/indexer, github.com/Utahjezz/mimir/pkg/workspace, and github.com/spf13/cobra as imports of internal/commands/imports.go.",
+        "The response explains the workspace-specific behavior of the imports command instead of only listing package names."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I want to understand module boundaries in this codebase. Use Mimir to find every file in this repo that imports `github.com/spf13/cobra`, then summarize what that tells us about the CLI command surface.",
+      "expected_output": "A list or summary of the files importing github.com/spf13/cobra, plus an explanation of how those imports map to the CLI command layer and command registration patterns.",
+      "files": [],
+      "expectations": [
+        "The response uses Mimir's module/package import querying rather than only text grep.",
+        "The response includes internal/commands/register.go among the cobra importers.",
+        "The response connects the importer set to the repository's CLI command surface or command registration design."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Before I change `runImports`, use Mimir to simulate the impact, tell me who depends on it, and list the checks I'd run before editing. If the impact looks low, say why.",
+      "expected_output": "A pre-refactor impact assessment for runImports that uses impact simulation plus dependency tracing to describe callers, blast radius, confidence, and sensible pre-edit checks.",
+      "files": [],
+      "expectations": [
+        "The response uses Mimir's impact simulation and at least one caller/reference style query for follow-up context.",
+        "The response discusses who depends on runImports or explains clearly if the dependency graph is shallow.",
+        "The response includes concrete checks to run before editing, not just a raw command dump."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "You are given two fixture repos as input files. Treat the parent directories `evals/files/workspace-link-positive/backend` and `evals/files/workspace-link-positive/payments` as separate repos. Create a temporary workspace, add both repos, index them, explore cross-repo relations, and autonomously register any high-confidence workspace link you discover. Then list the created link(s) and explain why auto-registration was justified.",
+      "expected_output": "A workspace exploration that indexes the two fixture repos, discovers the high-confidence cross-repo relation, creates the workspace link automatically, validates or lists the link, and explains why it was safe to register without asking first.",
+      "files": [
+        "evals/files/workspace-link-positive/backend/checkout.go",
+        "evals/files/workspace-link-positive/payments/payment.go"
+      ],
+      "expectations": [
+        "The run creates a workspace containing both fixture repos and indexes them before linking.",
+        "The run registers a link from CheckoutService.PlaceOrder to PaymentCharge, or an equivalently precise source-to-destination link grounded in the fixture code.",
+        "The final summary explains why the link was high-confidence and was registered autonomously."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "You are given three fixture repos as input files. Treat `evals/files/workspace-link-ambiguous/backend`, `evals/files/workspace-link-ambiguous/payments`, and `evals/files/workspace-link-ambiguous/ledger` as separate repos. Create a temporary workspace, add the repos, index them, and look for cross-repo link candidates. Because this fixture is intentionally ambiguous, only register a link if the destination is clearly unique. Otherwise, report the ambiguity and stop short of creating a noisy link.",
+      "expected_output": "A workspace exploration that recognizes the ambiguous cross-repo candidate, explains why confidence is too low for autonomous registration, and leaves the workspace without creating a speculative link.",
+      "files": [
+        "evals/files/workspace-link-ambiguous/backend/checkout.go",
+        "evals/files/workspace-link-ambiguous/payments/charge.go",
+        "evals/files/workspace-link-ambiguous/ledger/charge.go"
+      ],
+      "expectations": [
+        "The run indexes the three fixture repos and checks for cross-repo link candidates.",
+        "The run does not register a speculative link when multiple destination symbols match the same candidate call.",
+        "The final summary explicitly reports the ambiguity and what additional evidence would be needed to create a trustworthy link."
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 ---
 name: mimir
-description: "Tree-sitter code indexer for exploring symbols, tracing call graphs, and detecting dead code. Use this skill whenever you need to understand a codebase structure, find where a function is defined, trace who calls what, search for symbols by name or pattern, detect unused code, or get a high-level overview of a repository. Trigger on: 'index this repo', 'find symbol X', 'who calls this function', 'show dead code', 'trace the call graph', 'explore this codebase', 'what symbols are in this file', 'show repo structure', or any codebase exploration task. Also use when navigating unfamiliar repos or before refactoring to understand impact, and proactively register high-confidence workspace links discovered during cross-repo exploration."
-version: 1.3.1
+description: "Tree-sitter code indexer for exploring symbols, tracing call graphs, querying imports, and detecting dead code. Use this skill whenever you need to understand a codebase structure, find where a function is defined, trace who calls what, inspect what a file imports, find who imports a module, analyze module boundaries, detect unused code, or get a high-level overview of a repository. Trigger on requests like 'index this repo', 'find symbol X', 'who calls this function', 'what does this file import?', 'who imports this package?', 'show dead code', 'trace the call graph', 'explore this codebase', 'show repo structure', or before refactoring to understand impact. Also use it during cross-repo exploration and proactively register high-confidence workspace links you discover."
+version: 1.4.0
 type: skill
 category: development
 tags:
@@ -34,7 +34,18 @@ metadata:
 
 ## Overview
 
-Index a repo once, then query symbols, trace call graphs, search by name or fuzzy text, and detect dead code — all from a persistent SQLite index built by tree-sitter.
+Index a repo once, then query symbols, imports, call graphs, fuzzy matches, and dead code from a persistent SQLite index built by tree-sitter.
+
+## Operating Mode
+
+This skill is **capability-first, not interface-specific**.
+
+- Use whatever Mimir interface is available in the current environment
+- If structured Mimir tools are available, use them
+- If they are not available, use the CLI commands documented here
+- Do not assume a particular tool integration is installed before you start
+
+Translate the user's exploration goal into the most direct Mimir operation available.
 
 ## Quick Start
 
@@ -55,6 +66,8 @@ mimir tree <path> --depth 3           # Directory structure with symbol counts
 | **Search symbols by pattern** | `mimir search <root> --fuzzy "query"` | camelCase/snake_case aware, BM25 ranked, searches names + body; add `--limit N` to cap results |
 | **Exact name lookup** | `mimir search <root> --name "ClassName.method"` | Dot-notation: `Class.*`, `*.method` |
 | **Prefix search** | `mimir search <root> --like "process"` | SQL LIKE prefix match |
+| **What does this file import?** | `mimir imports <root> --file <path>` | Lists import statements for one indexed source file |
+| **Who imports this module/package?** | `mimir imports <root> --module <path>` | Great for module boundary checks and rename impact |
 | **Who calls this function?** | `mimir callers <root> <symbol>` | Default 2 levels deep. Use `--depth N` |
 | **What does this function call?** | `mimir refs <root> --caller <name>` | Outbound references |
 | **Simulate refactor impact** | `mimir impact simulate <root> --symbol <name> --change <descriptor>` | Returns risk + planning signals before editing |
@@ -94,6 +107,15 @@ mimir callers /path/to/repo MyFunction            # who depends on this?
 mimir callers /path/to/repo MyFunction --depth 3  # deeper impact analysis
 mimir refs /path/to/repo --caller MyFunction      # what does it call?
 ```
+
+### Import and dependency analysis
+```bash
+mimir imports /path/to/repo --file pkg/orders/service.go
+mimir imports /path/to/repo --module github.com/acme/payments/sdk
+mimir imports --workspace myproject --module github.com/acme/shared/contracts
+```
+
+Use this when the question is about package/module dependencies rather than symbol definitions.
 
 ### Agent-aware planning before code edits
 ```bash
@@ -165,6 +187,7 @@ For the concrete step-by-step flow, use `references/workspaces.md` → **Link Di
 1. **Always index first** — all query commands need an existing index (except `symbols` and `symbol` in file mode)
 2. **Dead-code uses name-only matching** — false negatives possible for common names like `Open`, `Close`, `Error`. Use `--unexported` to reduce noise
 3. **Framework entry points show as "dead"** — route handlers, decorators, fixtures are called by frameworks, not directly in code. These are expected false positives
+4. **Imports are path-oriented** — use `imports` for module/package dependency questions, not `search`
 
 ## Common Mistakes
 
@@ -172,6 +195,7 @@ For the concrete step-by-step flow, use `references/workspaces.md` → **Link Di
 |---------|-----|
 | Querying before indexing | Always run `mimir index <path>` first; `mimir symbols <file>` is the only command that works without an index |
 | Using `--name` for approximate matches | `--name` is exact. Use `--fuzzy` for partial/camelCase matches |
+| Using `search` when the task is really about imports | Use `mimir imports --file` or `--module` for dependency/module questions |
 | Treating dead-code results as definitive | `mimir dead` uses name-only matching — common names (`Open`, `Close`, `Error`) produce false negatives. Always review results manually |
 | Forgetting `--unexported` on dead-code runs | Without it, every exported symbol shows as "dead" even if called by external packages |
 | Skipping link declaration after workspace exploration | Cross-repo relationships found this session are gone next session if not declared with `mimir workspace link` |
