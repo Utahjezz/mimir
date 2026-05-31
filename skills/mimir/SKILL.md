@@ -1,7 +1,7 @@
 ---
 name: mimir
-description: "Tree-sitter code indexer for exploring symbols, tracing call graphs, and detecting dead code. Use this skill whenever you need to understand a codebase structure, find where a function is defined, trace who calls what, search for symbols by name or pattern, detect unused code, or get a high-level overview of a repository. Trigger on: 'index this repo', 'find symbol X', 'who calls this function', 'show dead code', 'trace the call graph', 'explore this codebase', 'what symbols are in this file', 'show repo structure', or any codebase exploration task. Also use when navigating unfamiliar repos or before refactoring to understand impact."
-version: 1.3.0
+description: "Tree-sitter code indexer for exploring symbols, tracing call graphs, querying imports, and detecting dead code. Use this skill whenever you need to understand a codebase structure, find where a function is defined, trace who calls what, inspect what a file imports, find who imports a module, analyze module boundaries, detect unused code, or get a high-level overview of a repository. Trigger on requests like 'index this repo', 'find symbol X', 'who calls this function', 'what does this file import?', 'who imports this package?', 'show dead code', 'trace the call graph', 'explore this codebase', 'show repo structure', or before refactoring to understand impact. Also use it during cross-repo exploration and proactively register high-confidence workspace links you discover."
+version: 1.4.0
 type: skill
 category: development
 tags:
@@ -34,7 +34,18 @@ metadata:
 
 ## Overview
 
-Index a repo once, then query symbols, trace call graphs, search by name or fuzzy text, and detect dead code — all from a persistent SQLite index built by tree-sitter.
+Index a repo once, then query symbols, imports, call graphs, fuzzy matches, and dead code from a persistent SQLite index built by tree-sitter.
+
+## Operating Mode
+
+This skill is **capability-first, not interface-specific**.
+
+- Use whatever Mimir interface is available in the current environment
+- If structured Mimir tools are available, use them
+- If they are not available, use the CLI commands documented here
+- Do not assume a particular tool integration is installed before you start
+
+Translate the user's exploration goal into the most direct Mimir operation available.
 
 ## Quick Start
 
@@ -55,6 +66,8 @@ mimir tree <path> --depth 3           # Directory structure with symbol counts
 | **Search symbols by pattern** | `mimir search <root> --fuzzy "query"` | camelCase/snake_case aware, BM25 ranked, searches names + body; add `--limit N` to cap results |
 | **Exact name lookup** | `mimir search <root> --name "ClassName.method"` | Dot-notation: `Class.*`, `*.method` |
 | **Prefix search** | `mimir search <root> --like "process"` | SQL LIKE prefix match |
+| **What does this file import?** | `mimir imports <root> --file <path>` | Lists import statements for one indexed source file |
+| **Who imports this module/package?** | `mimir imports <root> --module <path>` | Great for module boundary checks and rename impact |
 | **Who calls this function?** | `mimir callers <root> <symbol>` | Default 2 levels deep. Use `--depth N` |
 | **What does this function call?** | `mimir refs <root> --caller <name>` | Outbound references |
 | **Simulate refactor impact** | `mimir impact simulate <root> --symbol <name> --change <descriptor>` | Returns risk + planning signals before editing |
@@ -95,6 +108,15 @@ mimir callers /path/to/repo MyFunction --depth 3  # deeper impact analysis
 mimir refs /path/to/repo --caller MyFunction      # what does it call?
 ```
 
+### Import and dependency analysis
+```bash
+mimir imports /path/to/repo --file pkg/orders/service.go
+mimir imports /path/to/repo --module github.com/acme/payments/sdk
+mimir imports --workspace myproject --module github.com/acme/shared/contracts
+```
+
+Use this when the question is about package/module dependencies rather than symbol definitions.
+
 ### Agent-aware planning before code edits
 ```bash
 mimir impact simulate /path/to/repo \
@@ -124,40 +146,48 @@ mimir dead /path/to/repo --type function --file pkg/utils/
 ### Cross-repo exploration (workspaces)
 See `references/workspaces.md` for workspace commands (create, link, fan-out search).
 
-## Cross-Repo Link Obligation
+## Cross-Repo Link Registration Policy
 
 ```
-AFTER EXPLORING ANY WORKSPACE: ASK THE USER BEFORE RUNNING THE LINK DISCOVERY PROTOCOL
+AFTER CROSS-REPO EXPLORATION: REGISTER HIGH-CONFIDENCE WORKSPACE LINKS BY DEFAULT
 ```
 
-**Only ask if:** a workspace exists and `mimir workspace show` returns at least 2 repos. If no workspace exists or it contains fewer than 2 repos, skip silently.
+**Apply this policy only when:** a workspace exists and `mimir workspace show` returns at least 2 repos. If no workspace exists or it contains fewer than 2 repos, skip silently.
 
-When the conditions above are met, ask the user before proceeding:
+When workspace exploration reveals a credible cross-repo relationship, treat link registration as a normal part of the workflow — not an optional follow-up.
 
-> "I can run the Link Discovery Protocol to find and declare cross-repo relationships
-> discovered during this session. This inspects outbound refs across all workspace repos.
-> Proceed?"
+**Autonomously register the link when all are true:**
+- The source and destination symbols resolve clearly
+- The relationship is plausible from refs, naming, or surrounding code context
+- The link is not already declared
+- You can describe the relationship with a concise, useful note
 
-**Ask when:**
-- You explored two or more repos in a workspace
-- You traced a symbol from one repo that resolves in another
-- You found naming patterns suggesting a caller/callee relationship across repos
+**Before creating a link:**
+1. Review existing links to avoid duplicates
+2. Confirm source/destination direction
+3. Add a meaningful `--note` and at least one relevant `--meta` value when possible
+4. Run `mimir workspace links --check` after registration when validation is useful
 
-**If the user confirms:** run the protocol in `references/workspaces.md` → **Link Discovery Protocol**.
+**Ask the user only when:**
+- Multiple symbol matches make the link ambiguous
+- The relationship is speculative or weakly inferred
+- You cannot determine the correct source/destination symbols confidently
+- The intended note/metadata would be mostly guesswork
 
-**If the user declines:** briefly note any obvious candidates you already observed, so
-they can run the protocol themselves later. Do not silently discard what you found.
+**Never end cross-repo exploration without doing one of these:**
+- registering the high-confidence links you found, or
+- explicitly reporting the ambiguous candidates you chose not to register
 
-**Red Flags — STOP and ask:**
-- "The relationship is obvious from context" — undeclared links don't exist in the index
-- "I only explored briefly" — even a brief exploration can surface a link worth declaring
-- Ending the session without having asked — there is no next time, future sessions start blind
+**Final summary requirement:** report every link you created, why it was added, and any candidate links left unresolved.
+
+For the concrete step-by-step flow, use `references/workspaces.md` → **Link Discovery Protocol**.
 
 ## Important Caveats
 
 1. **Always index first** — all query commands need an existing index (except `symbols` and `symbol` in file mode)
 2. **Dead-code uses name-only matching** — false negatives possible for common names like `Open`, `Close`, `Error`. Use `--unexported` to reduce noise
 3. **Framework entry points show as "dead"** — route handlers, decorators, fixtures are called by frameworks, not directly in code. These are expected false positives
+4. **Imports are path-oriented** — use `imports` for module/package dependency questions, not `search`
 
 ## Common Mistakes
 
@@ -165,6 +195,7 @@ they can run the protocol themselves later. Do not silently discard what you fou
 |---------|-----|
 | Querying before indexing | Always run `mimir index <path>` first; `mimir symbols <file>` is the only command that works without an index |
 | Using `--name` for approximate matches | `--name` is exact. Use `--fuzzy` for partial/camelCase matches |
+| Using `search` when the task is really about imports | Use `mimir imports --file` or `--module` for dependency/module questions |
 | Treating dead-code results as definitive | `mimir dead` uses name-only matching — common names (`Open`, `Close`, `Error`) produce false negatives. Always review results manually |
 | Forgetting `--unexported` on dead-code runs | Without it, every exported symbol shows as "dead" even if called by external packages |
 | Skipping link declaration after workspace exploration | Cross-repo relationships found this session are gone next session if not declared with `mimir workspace link` |

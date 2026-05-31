@@ -92,7 +92,7 @@ Remove a link by numeric ID (shown in `workspace links` output).
 
 ## Link Discovery Protocol
 
-**Run this only if the user confirms** (see `SKILL.md` → Cross-Repo Link Obligation for when to ask).
+**Default behavior:** run this autonomously for high-confidence links. Ask the user only when the relationship is ambiguous, speculative, or cannot be described confidently.
 
 ### Step 1 — Find candidate cross-repo calls
 
@@ -105,6 +105,10 @@ mimir refs <repo-path> --json
 # For each callee name that looks like it might live in another repo:
 mimir search <other-repo-path> --name "<callee-name>"
 mimir search <other-repo-path> --fuzzy "<callee-name>"   # when casing differs
+
+# For import-driven boundaries, also inspect package/module dependencies:
+mimir imports <repo-path> --json
+mimir imports <other-repo-path> --module "<module-path>"
 ```
 
 A **candidate link** exists when:
@@ -137,6 +141,14 @@ mimir workspace link <src-repo-id> <src-symbol> \
 - Names the mechanism: GraphQL query, gRPC method, event, shared type
 - Is useful to a future agent reading it cold
 
+**Autonomous registration bar:**
+- symbols resolve clearly on both sides
+- direction is clear
+- link is not already present
+- note/metadata can be written without guesswork
+
+If any of the above fails, report the candidate and ask instead of creating a noisy link.
+
 ### Step 4 — Verify
 
 ```bash
@@ -151,6 +163,13 @@ mimir workspace links --check   # confirm links appear correctly and are not bro
 | "I only found one relationship" | One link is worth declaring |
 | "I'm not 100% sure" | Declare with a qualifying note; imperfect links beat no links |
 | "I'll do it at the end" | The end is now — run the protocol before closing |
+
+### Final reporting
+
+At the end of the exploration, summarize:
+- links created
+- why each link was added
+- any ambiguous candidates left unresolved
 
 ## Cross-Repo Search and Refs
 
