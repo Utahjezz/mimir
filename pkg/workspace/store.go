@@ -59,16 +59,18 @@ func OpenWorkspace(name string) (*sql.DB, error) {
 		return nil, fmt.Errorf("cannot open index db: %w", err)
 	}
 
-	// WAL mode allows concurrent readers even when a writer is active.
-	// busy_timeout tells SQLite to retry for up to 5s before returning
-	// SQLITE_BUSY — covers write contention during concurrent workspace access.
-	if _, err := db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("cannot set WAL mode: %w", err)
-	}
+	// busy_timeout must be set first so that the subsequent PRAGMA
+	// journal_mode = WAL (which acquires a write lock) retries when
+	// another process is concurrently initialising the same database.
 	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("cannot set busy timeout: %w", err)
+	}
+
+	// WAL mode allows concurrent readers even when a writer is active.
+	if _, err := db.Exec(`PRAGMA journal_mode = WAL`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("cannot set WAL mode: %w", err)
 	}
 
 	// Bootstrap the meta table alone so we can read the stored schema version

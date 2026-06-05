@@ -37,7 +37,6 @@ func IsSchemaMismatch(err error) bool {
 
 const schema = `
 PRAGMA foreign_keys = ON;
-PRAGMA journal_mode = WAL;
 
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
