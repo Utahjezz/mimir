@@ -101,6 +101,19 @@ func Register(root *cobra.Command) {
 	impactCmd.AddCommand(impactSimulateCmd)
 	root.AddCommand(impactCmd)
 
+	// graph
+	graphCmd.Flags().StringVar(&graphFormat, "format", "mermaid", "Output format (mermaid, json)")
+	graphCmd.Flags().BoolVar(&graphJSON, "json", false, "Alias for --format json")
+	graphCmd.Flags().StringVar(&graphScope, "scope", "package", "Aggregation scope (package)")
+	graphCmd.Flags().BoolVar(&graphNoRefresh, "no-refresh", false, "Skip automatic re-index before building graph")
+	// Active filter flags (wired in subtask_06).
+	graphCmd.Flags().StringVar(&graphFocus, "focus", "", "Focus graph on packages matching substring (case-insensitive)")
+	graphCmd.Flags().StringVar(&graphExclude, "exclude", "", "Exclude packages matching substring (case-insensitive)")
+	graphCmd.Flags().IntVar(&graphMinCalls, "min-calls", 0, "Minimum call count to include an edge (0 = no limit)")
+	graphCmd.Flags().IntVar(&graphDepth, "depth", 0, "Limit graph traversal depth (0 = unlimited)")
+	graphCmd.Flags().StringVar(&graphWorkspace, "workspace", "", "Workspace name for multi-repo graph enrichment")
+	root.AddCommand(graphCmd)
+
 	// workspace
 	root.AddCommand(workspaceCmd.WorkspaceCmd)
 
